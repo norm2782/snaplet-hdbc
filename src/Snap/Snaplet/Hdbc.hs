@@ -7,10 +7,67 @@
 
   This module provides a very thin wrapper around HDBC
 -}
-module Snap.Snaplet.Hdbc where
+module Snap.Snaplet.Hdbc (
+  -- Snaplet functions
+    HdbcSnaplet(..)
+  , hdbcInit
+  , getConn
+  , disconnect
+  , commit
+  , rollback
+  , runRaw
+  , run
+  , prepare
+  , clone
+  , pureStr
+  , hdbcDriverName
+  , hdbcClientVer
+  , proxiedClientVer
+  , proxiedClientName
+  , dbServerVer
+  , dbTransactionSupport
+  , getTables
+  , describeTable
+  , quickQuery'
+  , quickQuery
+  , sRun
+  , withTransaction
 
-import           Database.HDBC (IConnection(), SqlValue, Statement, SqlColDesc)
+  -- HDBC functions
+  , SqlValue(..)
+  , HDBC.toSql
+  , HDBC.fromSql
+  , HDBC.safeFromSql
+  , HDBC.nToSql
+  , HDBC.iToSql
+  , HDBC.posixToSql
+  , HDBC.withWConn
+  , Statement(..)
+  , HDBC.sExecute
+  , HDBC.sExecuteMany
+  , HDBC.fetchRowAL
+  , HDBC.fetchRowMap
+  , HDBC.sFetchRow
+  , HDBC.fetchAllRows
+  , HDBC.fetchAllRows'
+  , HDBC.fetchAllRowsAL
+  , HDBC.fetchAllRowsAL'
+  , HDBC.fetchAllRowsMap
+  , HDBC.fetchAllRowsMap'
+  , HDBC.sFetchAllRows
+  , HDBC.sFetchAllRows'
+  , SqlError(..)
+  , HDBC.throwSqlError
+  , HDBC.catchSql
+  , HDBC.handleSql
+  , HDBC.sqlExceptions
+  , HDBC.handleSqlError
+  , module Database.HDBC.ColTypes
+  ) where
+
 import qualified Database.HDBC as HDBC
+import           Database.HDBC (IConnection(), SqlValue, SqlError, Statement)
+import           Database.HDBC.ColTypes
 import           Snap.Snaplet
 import           Control.Monad.State
 
