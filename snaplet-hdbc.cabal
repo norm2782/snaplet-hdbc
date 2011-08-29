@@ -1,0 +1,37 @@
+name:           snaplet-hdbc
+version:        0.1.0
+synopsis:       HDBC snaplet
+description:    HDBC snaplet
+license:        BSD3
+license-file:   LICENSE
+author:         Jurriën Stutterheim
+maintainer:     j.stutterheim@me.com
+build-type:     Simple
+cabal-version:  >= 1.6
+homepage:       http://norm2782.com/
+category:       Web
+
+extra-source-files:  LICENSE
+
+Library
+  hs-source-dirs: src
+
+  exposed-modules:
+    Snap.Snaplet.Hdbc
+
+  build-depends:
+    base                      >= 4     && < 5,
+    clientsession             >= 0.4,
+    containers                >= 0.3,
+    haskell98,
+    HDBC                      >= 2.2,
+    mtl                       >  2.0   && < 2.1,
+    snap                      >= 0.6   && < 0.7,
+    text                      >= 0.11
+
+  if impl(ghc >= 6.12.0)
+    ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
+                 -fno-warn-orphans -fno-warn-unused-do-bind
+  else
+    ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2
+                 -fno-warn-orphans
