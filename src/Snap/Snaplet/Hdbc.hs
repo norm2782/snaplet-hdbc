@@ -174,7 +174,8 @@ sRun str mstrs = do
   conn <- gets hdbcConn
   liftIO $ HDBC.sRun conn str mstrs
 
-withTransaction :: IConnection conn => (conn -> IO a) -> Handler b (HdbcSnaplet conn) a
+withTransaction :: IConnection conn => (conn -> IO a)
+                -> Handler b (HdbcSnaplet conn) a
 withTransaction f = do
   conn <- gets hdbcConn
   liftIO $ HDBC.withTransaction conn f
