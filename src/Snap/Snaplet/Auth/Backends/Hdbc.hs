@@ -102,63 +102,63 @@ instance Convertible UserId SqlValue where
 
 instance IAuthBackend HdbcAuthManager where
   destroy (HdbcAuthManager conn tbl) au = destroy' (userId au)
-    where destroy' Nothing     = error "Need an auth user"
-          destroy' (Just uid)  = withTransaction conn $ \conn' -> do
-            stmt  <- prepare conn' delQuery
-            _     <- execute stmt [toSql $ unUid uid]
-            return ()
-          delQuery =  "DELETE FROM " ++ tblName tbl ++ " WHERE " ++
-                      colId tbl ++ " = ? "
+    where  destroy' Nothing     = error "Need an auth user"
+           destroy' (Just uid)  = withTransaction conn $ \conn' -> do
+             stmt  <- prepare conn' delQuery
+             _     <- execute stmt [toSql uid]
+             return ()
+           delQuery =  "DELETE FROM " ++ tblName tbl ++ " WHERE " ++
+                       colId tbl ++ " = ? "
 
   save (HdbcAuthManager conn tbl) au = withTransaction conn $ \conn' -> do
     stmt  <- mkStmt (userId au) conn'
     _     <- execute stmt $ mkVals (userId au)
     return au
-    where mkStmt Nothing conn'' = prepare conn'' $
-            "INSERT INTO " ++ tblName tbl ++ " (" ++
-            intercalate "," (map (\f -> f tbl)  colLst)
-            ++ ") VALUES (" ++ intercalate "," (map (const "?") colLst) ++ ")"
-          mkStmt (Just _) conn'' = prepare conn'' $
-            "UPDATE " ++ tblName tbl ++ " SET (" ++
-            intercalate "," (map (\f -> f tbl ++ " = ?")  colLst)
-            ++ ") WHERE " ++ colId tbl ++ " = ?"
-          mkVals Nothing     = mkVals'
-          mkVals (Just uid)  = mkVals' ++ [toSql $ unUid uid]
-          mkVals' =  [  toSql $ userLogin au
-                     ,  toSql $ userPassword au
-                     ,  toSql $ userActivatedAt au
-                     ,  toSql $ userSuspendedAt au
-                     ,  toSql $ userRememberToken au
-                     ,  toSql $ userLoginCount au
-                     ,  toSql $ userFailedLoginCount au
-                     ,  toSql $ userLockedOutAt au
-                     ,  toSql $ userCurrentLoginAt au
-                     ,  toSql $ userLastLoginAt au
-                     ,  toSql $ userCurrentLoginIp au
-                     ,  toSql $ userLastLoginIp au
-                     ,  toSql $ userCreatedAt au
-                     ,  toSql $ userUpdatedAt au
-                     ,  SqlNull -- userRoles au TODO: Implement when ACL system is live
-                     ,  SqlNull -- userMeta au TODO: What should we store here?
-                     ]
-          colLst  =  [  colLogin
-                     ,  colPassword
-                     ,  colActivatedAt
-                     ,  colSuspendedAt
-                     ,  colRememberToken
-                     ,  colLoginCount
-                     ,  colFailedLoginCount
-                     ,  colLockedOutAt
-                     ,  colCurrentLoginAt
-                     ,  colLastLoginAt
-                     ,  colCurrentLoginIp
-                     ,  colLastLoginIp
-                     ,  colCreatedAt
-                     ,  colUpdatedAt
-                     ,  colRoles
-                     ,  colMeta ]
+    where  mkStmt Nothing conn'' = prepare conn'' $
+             "INSERT INTO " ++ tblName tbl ++ " (" ++
+             intercalate "," (map (\f -> f tbl)  colLst)
+             ++ ") VALUES (" ++ intercalate "," (map (const "?") colLst) ++ ")"
+           mkStmt (Just _) conn'' = prepare conn'' $
+             "UPDATE " ++ tblName tbl ++ " SET (" ++
+             intercalate "," (map (\f -> f tbl ++ " = ?")  colLst)
+             ++ ") WHERE " ++ colId tbl ++ " = ?"
+           mkVals Nothing     = mkVals'
+           mkVals (Just uid)  = mkVals' ++ [toSql uid]
+           mkVals' =  [  toSql $ userLogin au
+                      ,  toSql $ userPassword au
+                      ,  toSql $ userActivatedAt au
+                      ,  toSql $ userSuspendedAt au
+                      ,  toSql $ userRememberToken au
+                      ,  toSql $ userLoginCount au
+                      ,  toSql $ userFailedLoginCount au
+                      ,  toSql $ userLockedOutAt au
+                      ,  toSql $ userCurrentLoginAt au
+                      ,  toSql $ userLastLoginAt au
+                      ,  toSql $ userCurrentLoginIp au
+                      ,  toSql $ userLastLoginIp au
+                      ,  toSql $ userCreatedAt au
+                      ,  toSql $ userUpdatedAt au
+                      ,  SqlNull -- userRoles au TODO: Implement when ACL system is live
+                      ,  SqlNull -- userMeta au TODO: What should we store here?
+                      ]
+           colLst  =  [  colLogin
+                      ,  colPassword
+                      ,  colActivatedAt
+                      ,  colSuspendedAt
+                      ,  colRememberToken
+                      ,  colLoginCount
+                      ,  colFailedLoginCount
+                      ,  colLockedOutAt
+                      ,  colCurrentLoginAt
+                      ,  colLastLoginAt
+                      ,  colCurrentLoginIp
+                      ,  colLastLoginIp
+                      ,  colCreatedAt
+                      ,  colUpdatedAt
+                      ,  colRoles
+                      ,  colMeta ]
 
-  lookupByUserId mgr uid = query mgr colId [toSql $ unUid uid]
+  lookupByUserId mgr uid = query mgr colId [toSql uid]
   lookupByLogin mgr lgn = query mgr colLogin [toSql lgn]
   lookupByRememberToken mgr rmb = query mgr tblName [toSql rmb]
 
