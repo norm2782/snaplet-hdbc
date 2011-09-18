@@ -117,7 +117,7 @@ instance IAuthBackend HdbcAuthManager where
     where mkStmt Nothing conn'' = prepare conn'' $
             "INSERT INTO " ++ tblName tbl ++ " (" ++
             intercalate "," (map (\f -> f tbl)  colLst)
-            ++ ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            ++ ") VALUES (" ++ intercalate "," (map (const "?") colLst) ++ ")"
           mkStmt (Just _) conn'' = prepare conn'' $
             "UPDATE " ++ tblName tbl ++ " SET (" ++
             intercalate "," (map (\f -> f tbl ++ " = ?")  colLst)
@@ -172,32 +172,32 @@ query (HdbcAuthManager conn tbl) col vals = withTransaction conn $ \conn' -> do
   _     <- execute stmt vals
   res   <- fetchRowMap stmt
   case res of
-    Nothing -> return Nothing
-    Just mp -> return $ Just mkUser
-               where colLU col' = mp DM.! col' tbl
-                     rdSql' = rdSql'
-                     rdSql con col' =
-                       case colLU col' of
-                         SqlNull  -> Nothing
-                         x        -> Just . con $ fromSql x
-                     mkUser = AuthUser {
-                                   userId = rdSql UserId colId
-                                ,  userLogin = fromSql $ colLU colLogin
-                                ,  userPassword = rdSql Encrypted colPassword
-                                ,  userActivatedAt = rdSql' colActivatedAt
-                                ,  userSuspendedAt = rdSql' colSuspendedAt
-                                ,  userRememberToken = rdSql' colRememberToken
-                                ,  userLoginCount = fromSql $ colLU colLoginCount
-                                ,  userFailedLoginCount = fromSql $ colLU colFailedLoginCount
-                                ,  userLockedOutAt = rdSql' colLockedOutAt
-                                ,  userCurrentLoginAt = rdSql' colCurrentLoginAt
-                                ,  userLastLoginAt = rdSql' colLastLoginAt
-                                ,  userCurrentLoginIp = rdSql' colCurrentLoginIp
-                                ,  userLastLoginIp = rdSql' colLastLoginIp
-                                ,  userCreatedAt = rdSql' colCreatedAt
-                                ,  userUpdatedAt = rdSql' colUpdatedAt
-                                ,  userRoles = [] -- :: [Role] TODO
-                                ,  userMeta = HM.empty } -- :: HashMap Text Value TODO
+    Nothing  ->  return Nothing
+    Just mp  ->  return $ Just mkUser
+                 where  colLU col' = mp DM.! col' tbl
+                        rdSql' = rdSql'
+                        rdSql con col' =
+                          case colLU col' of
+                            SqlNull  -> Nothing
+                            x        -> Just . con $ fromSql x
+                        mkUser = AuthUser {
+                                      userId = rdSql UserId colId
+                                   ,  userLogin = fromSql $ colLU colLogin
+                                   ,  userPassword = rdSql Encrypted colPassword
+                                   ,  userActivatedAt = rdSql' colActivatedAt
+                                   ,  userSuspendedAt = rdSql' colSuspendedAt
+                                   ,  userRememberToken = rdSql' colRememberToken
+                                   ,  userLoginCount = fromSql $ colLU colLoginCount
+                                   ,  userFailedLoginCount = fromSql $ colLU colFailedLoginCount
+                                   ,  userLockedOutAt = rdSql' colLockedOutAt
+                                   ,  userCurrentLoginAt = rdSql' colCurrentLoginAt
+                                   ,  userLastLoginAt = rdSql' colLastLoginAt
+                                   ,  userCurrentLoginIp = rdSql' colCurrentLoginIp
+                                   ,  userLastLoginIp = rdSql' colLastLoginIp
+                                   ,  userCreatedAt = rdSql' colCreatedAt
+                                   ,  userUpdatedAt = rdSql' colUpdatedAt
+                                   ,  userRoles = [] -- :: [Role] TODO
+                                   ,  userMeta = HM.empty } -- :: HashMap Text Value TODO
 
 {- class IAuthBackend r where-}
 {-   save :: r -> AuthUser -> IO AuthUser-}
