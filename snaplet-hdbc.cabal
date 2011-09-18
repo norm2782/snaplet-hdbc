@@ -17,17 +17,20 @@ Library
   hs-source-dirs: src
 
   exposed-modules:
+    Snap.Snaplet.Auth.Backends.Hdbc
     Snap.Snaplet.Hdbc
 
   build-depends:
-    base                      >= 4     && < 5,
     clientsession             >= 0.4,
     containers                >= 0.3,
-    haskell98,
+    data-lens                 >= 2.0 && < 2.1,
+    data-lens-template        >= 2.1 && < 2.2,
+    haskell2010,
     HDBC                      >= 2.2,
     mtl                       >  2.0   && < 2.1,
     snap                      >= 0.6   && < 0.7,
-    text                      >= 0.11
+    text                      >= 0.11,
+    unordered-containers      >= 0.1.4
 
   if impl(ghc >= 6.12.0)
     ghc-options: -Wall -fwarn-tabs -funbox-strict-fields -O2

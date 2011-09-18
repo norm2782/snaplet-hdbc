@@ -135,7 +135,7 @@ getTables = withConn HDBC.getTables
 
 describeTable :: IConnection conn => String
               -> Handler b (HdbcSnaplet conn) [(String, SqlColDesc)]
-describeTable str = withConn (\conn  -> HDBC.describeTable conn str)
+describeTable str = withConn (\conn -> HDBC.describeTable conn str)
 
 quickQuery' :: IConnection conn => String -> [SqlValue]
             -> Handler b (HdbcSnaplet conn) [[SqlValue]]
