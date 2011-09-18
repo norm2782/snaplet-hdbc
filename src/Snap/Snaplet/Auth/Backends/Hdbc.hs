@@ -138,8 +138,8 @@ instance IAuthBackend HdbcAuthManager where
                      ,  toSql $ userLastLoginIp au
                      ,  toSql $ userCreatedAt au
                      ,  toSql $ userUpdatedAt au
-                     ,  undefined -- userRoles au TODO: Implement when ACL system is live
-                     ,  undefined -- userMeta au TODO: What should we store here?
+                     ,  SqlNull -- userRoles au TODO: Implement when ACL system is live
+                     ,  SqlNull -- userMeta au TODO: What should we store here?
                      ]
           colLst  =  [  colLogin
                      ,  colPassword
