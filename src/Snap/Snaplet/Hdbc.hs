@@ -81,9 +81,7 @@ hdbcInit conn = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
   return $ HdbcSnaplet conn
 
 getConn :: (MonadIO m, MonadState (HdbcSnaplet conn) m, IConnection conn) => m conn
-getConn = do
-  conn <- gets hdbcConn
-  return conn
+getConn = gets hdbcConn
 
 withConn :: (MonadIO m, MonadState (HdbcSnaplet t) m) => (t -> IO b) -> m b
 withConn f = do
@@ -105,14 +103,14 @@ rollback :: IConnection conn => Handler b (HdbcSnaplet conn) ()
 rollback = withConn HDBC.rollback
 
 runRaw :: IConnection conn => String -> Handler b (HdbcSnaplet conn) ()
-runRaw str = withConn (\conn -> HDBC.runRaw conn str)
+runRaw str = withConn (`HDBC.runRaw` str)
 
 run :: IConnection conn => String -> [SqlValue]
     -> Handler b (HdbcSnaplet conn) Integer
 run str vs = withConn (\conn -> HDBC.run conn str vs)
 
 prepare :: IConnection conn => String -> Handler b (HdbcSnaplet conn) Statement
-prepare str = withConn (\conn -> HDBC.prepare conn str)
+prepare str = withConn (`HDBC.prepare` str)
 
 clone :: IConnection conn => Handler b (HdbcSnaplet conn) conn
 clone = withConn HDBC.clone
@@ -140,7 +138,7 @@ getTables = withConn HDBC.getTables
 
 describeTable :: IConnection conn => String
               -> Handler b (HdbcSnaplet conn) [(String, SqlColDesc)]
-describeTable str = withConn (\conn -> HDBC.describeTable conn str)
+describeTable str = withConn (`HDBC.describeTable` str)
 
 quickQuery' :: IConnection conn => String -> [SqlValue]
             -> Handler b (HdbcSnaplet conn) [[SqlValue]]
@@ -156,4 +154,4 @@ sRun str mstrs = withConn (\conn -> HDBC.sRun conn str mstrs)
 
 withTransaction :: IConnection conn => (conn -> IO a)
                 -> Handler b (HdbcSnaplet conn) a
-withTransaction f = withConn (\conn -> HDBC.withTransaction conn f)
+withTransaction f = withConn (`HDBC.withTransaction` f)
