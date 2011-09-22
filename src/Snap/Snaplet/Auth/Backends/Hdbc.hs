@@ -28,14 +28,15 @@ initHdbcAuthManager
   -> Lens b (Snaplet SessionManager)
   -> conn
   -> AuthTable
+  -> Queries
   -> SnapletInit b (AuthManager b)
-initHdbcAuthManager s l conn tbl =
+initHdbcAuthManager s l conn tbl qries =
   makeSnaplet  "HdbcAuthManager"
                "A snaplet providing user authentication using an HDBC backend"
                Nothing $ liftIO $ do
   key <- getKey (asSiteKey s)
   return AuthManager {
-      backend = HdbcAuthManager conn tbl
+      backend = HdbcAuthManager conn tbl qries
     , session = l
     , activeUser = Nothing
     , minPasswdLen = asMinPasswdLen s
@@ -47,8 +48,9 @@ initHdbcAuthManager s l conn tbl =
 
 
 data HdbcAuthManager = forall conn. IConnection conn => HdbcAuthManager {
-    dbconn :: conn
-  , table  :: AuthTable
+     dbconn :: conn
+  ,  table  :: AuthTable
+  ,  qries  :: Queries
 }
 
 data AuthTable = AuthTable {
@@ -93,6 +95,33 @@ defAuthTable = AuthTable  {
   ,  colMeta = "meta" }
 
 
+data Queries = Queries {
+     selectQuery  :: AuthTable -> (String, [SqlValue])
+  ,  saveQuery    :: AuthTable -> AuthUser -> (String, [SqlValue])
+  ,  deleteQuery  :: AuthTable -> AuthUser -> (String, [SqlValue])
+}
+
+defQueries = Queries {
+     selectQuery  = defSelectQuery
+  ,  saveQuery    = defSaveQuery
+  ,  deleteQuery  = defDeleteQuery }
+
+
+defSelectQuery :: AuthTable -> (String, [SqlValue])
+defSelectQuery tbl = undefined
+
+defSaveQuery :: AuthTable -> AuthUser -> (String, [SqlValue])
+defSaveQuery tbl ausr = undefined
+
+defDeleteQuery :: AuthTable -> AuthUser -> (String, [SqlValue])
+defDeleteQuery tbl ausr =
+  case userId ausr of
+    Nothing   ->  error "Cannot delete user without unique ID"
+    Just uid  ->  (  "DELETE FROM " ++ tblName tbl ++ " WHERE " ++
+                     colId tbl ++ " = ? "
+                  ,  [toSql uid])
+
+
 instance Convertible Password SqlValue where
   safeConvert (ClearText bs) = Right $ toSql bs
   safeConvert (Encrypted bs) = Right $ toSql bs
@@ -101,16 +130,14 @@ instance Convertible UserId SqlValue where
   safeConvert (UserId uid) = Right $ toSql uid
 
 instance IAuthBackend HdbcAuthManager where
-  destroy (HdbcAuthManager conn tbl) au = destroy' (userId au)
-    where  destroy' Nothing     = error "Need an auth user"
-           destroy' (Just uid)  = withTransaction conn $ \conn' -> do
-             stmt  <- prepare conn' delQuery
-             _     <- execute stmt [toSql uid]
-             return ()
-           delQuery =  "DELETE FROM " ++ tblName tbl ++ " WHERE " ++
-                       colId tbl ++ " = ? "
+  destroy (HdbcAuthManager conn tbl qries) au = withTransaction conn $
+    \conn' -> do
+      let (qry, vals) = (deleteQuery qries) tbl au
+      stmt  <- prepare conn' qry
+      _     <- execute stmt vals
+      return ()
 
-  save (HdbcAuthManager conn tbl) au = withTransaction conn $ \conn' -> do
+  save (HdbcAuthManager conn tbl qries) au = withTransaction conn $ \conn' -> do
     stmt  <- mkStmt (userId au) conn'
     _     <- execute stmt $ mkVals (userId au)
     return au
@@ -167,7 +194,7 @@ mkSelect at whr = "SELECT * FROM " ++ tblName at ++ " WHERE " ++ whr ++ " = ? "
 
 query  ::  HdbcAuthManager -> (AuthTable -> String) -> [SqlValue]
        ->  IO (Maybe AuthUser)
-query (HdbcAuthManager conn tbl) col vals = withTransaction conn $ \conn' -> do
+query (HdbcAuthManager conn tbl qries) col vals = withTransaction conn $ \conn' -> do
   stmt  <- prepare conn' (mkSelect tbl $ col tbl)
   _     <- execute stmt vals
   res   <- fetchRowMap stmt
@@ -175,7 +202,7 @@ query (HdbcAuthManager conn tbl) col vals = withTransaction conn $ \conn' -> do
     Nothing  ->  return Nothing
     Just mp  ->  return $ Just mkUser
                  where  colLU col' = mp DM.! col' tbl
-                        rdSql' = rdSql'
+                        rdSql' = rdSql id
                         rdSql con col' =
                           case colLU col' of
                             SqlNull  -> Nothing
@@ -186,22 +213,15 @@ query (HdbcAuthManager conn tbl) col vals = withTransaction conn $ \conn' -> do
                                    ,  userPassword = rdSql Encrypted colPassword
                                    ,  userActivatedAt = rdSql' colActivatedAt
                                    ,  userSuspendedAt = rdSql' colSuspendedAt
-                                   ,  userRememberToken = rdSql' colRememberToken
+                                   {- ,  userRememberToken = rdSql' colRememberToken-}
                                    ,  userLoginCount = fromSql $ colLU colLoginCount
                                    ,  userFailedLoginCount = fromSql $ colLU colFailedLoginCount
                                    ,  userLockedOutAt = rdSql' colLockedOutAt
                                    ,  userCurrentLoginAt = rdSql' colCurrentLoginAt
                                    ,  userLastLoginAt = rdSql' colLastLoginAt
-                                   ,  userCurrentLoginIp = rdSql' colCurrentLoginIp
-                                   ,  userLastLoginIp = rdSql' colLastLoginIp
+                                   {- ,  userCurrentLoginIp = rdSql' colCurrentLoginIp-}
+                                   {- ,  userLastLoginIp = rdSql' colLastLoginIp-}
                                    ,  userCreatedAt = rdSql' colCreatedAt
                                    ,  userUpdatedAt = rdSql' colUpdatedAt
                                    ,  userRoles = [] -- :: [Role] TODO
                                    ,  userMeta = HM.empty } -- :: HashMap Text Value TODO
-
-{- class IAuthBackend r where-}
-{-   save :: r -> AuthUser -> IO AuthUser-}
-{-   lookupByUserId :: r -> UserId -> IO (Maybe AuthUser)-}
-{-   lookupByLogin :: r -> Text -> IO (Maybe AuthUser)-}
-{-   lookupByRememberToken :: r -> Text -> IO (Maybe AuthUser)-}
-{-   destroy :: r -> AuthUser -> IO ()-}
