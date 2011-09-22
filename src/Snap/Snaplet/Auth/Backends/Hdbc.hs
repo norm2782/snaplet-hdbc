@@ -225,20 +225,3 @@ query (HdbcAuthManager conn tbl qries) col vals = withTransaction conn $ \conn' 
                                    ,  userUpdatedAt = rdSql' colUpdatedAt
                                    ,  userRoles = [] -- :: [Role] TODO
                                    ,  userMeta = HM.empty } -- :: HashMap Text Value TODO
-
-{-
-data AuthUser = AuthUser 
-  , userRememberToken :: Maybe Text
-  , userFailedLoginCount :: Int
-  , userLockedOutUntil :: Maybe UTCTime
-  , userCurrentLoginAt :: Maybe UTCTime
-  , userLastLoginAt :: Maybe UTCTime
-  , userCurrentLoginIp :: Maybe ByteString
-  , userLastLoginIp :: Maybe ByteString
-  , userCreatedAt :: Maybe UTCTime
-  , userUpdatedAt :: Maybe UTCTime
-  , userRoles :: [Role]
-  , userMeta :: HashMap Text Value
-  } deriving (Show,Eq)
-
--}
