@@ -16,9 +16,9 @@ import            Database.HDBC
 import            Web.ClientSession
 
 import            Snap.Snaplet
+import            Snap.Snaplet.Auth.AuthManager
 import            Snap.Snaplet.Auth.Types
 import            Snap.Snaplet.Session
-
 
 
 
@@ -63,7 +63,7 @@ data AuthTable = AuthTable {
   ,  colRememberToken :: String
   ,  colLoginCount :: String
   ,  colFailedLoginCount :: String
-  ,  colLockedOutAt :: String
+  ,  colLockedOutUntil :: String
   ,  colCurrentLoginAt :: String
   ,  colLastLoginAt :: String
   ,  colCurrentLoginIp :: String
@@ -84,7 +84,7 @@ defAuthTable = AuthTable  {
   ,  colRememberToken = "remember_token"
   ,  colLoginCount = "login_count"
   ,  colFailedLoginCount = "failed_login_count"
-  ,  colLockedOutAt = "locked_out_at"
+  ,  colLockedOutUntil = "locked_out_until"
   ,  colCurrentLoginAt = "current_login_at"
   ,  colLastLoginAt = "last_login_at"
   ,  colCurrentLoginIp = "current_login_ip"
@@ -132,7 +132,7 @@ instance Convertible UserId SqlValue where
 instance IAuthBackend HdbcAuthManager where
   destroy (HdbcAuthManager conn tbl qries) au = withTransaction conn $
     \conn' -> do
-      let (qry, vals) = (deleteQuery qries) tbl au
+      let (qry, vals) = deleteQuery qries tbl au
       stmt  <- prepare conn' qry
       _     <- execute stmt vals
       return ()
@@ -158,7 +158,7 @@ instance IAuthBackend HdbcAuthManager where
                       ,  toSql $ userRememberToken au
                       ,  toSql $ userLoginCount au
                       ,  toSql $ userFailedLoginCount au
-                      ,  toSql $ userLockedOutAt au
+                      ,  toSql $ userLockedOutUntil au
                       ,  toSql $ userCurrentLoginAt au
                       ,  toSql $ userLastLoginAt au
                       ,  toSql $ userCurrentLoginIp au
@@ -175,7 +175,7 @@ instance IAuthBackend HdbcAuthManager where
                       ,  colRememberToken
                       ,  colLoginCount
                       ,  colFailedLoginCount
-                      ,  colLockedOutAt
+                      ,  colLockedOutUntil
                       ,  colCurrentLoginAt
                       ,  colLastLoginAt
                       ,  colCurrentLoginIp
@@ -216,7 +216,7 @@ query (HdbcAuthManager conn tbl qries) col vals = withTransaction conn $ \conn' 
                                    {- ,  userRememberToken = rdSql' colRememberToken-}
                                    ,  userLoginCount = fromSql $ colLU colLoginCount
                                    ,  userFailedLoginCount = fromSql $ colLU colFailedLoginCount
-                                   ,  userLockedOutAt = rdSql' colLockedOutAt
+                                   ,  userLockedOutUntil = fromSql $ colLU colLockedOutUntil
                                    ,  userCurrentLoginAt = rdSql' colCurrentLoginAt
                                    ,  userLastLoginAt = rdSql' colLastLoginAt
                                    {- ,  userCurrentLoginIp = rdSql' colCurrentLoginIp-}
@@ -225,3 +225,20 @@ query (HdbcAuthManager conn tbl qries) col vals = withTransaction conn $ \conn' 
                                    ,  userUpdatedAt = rdSql' colUpdatedAt
                                    ,  userRoles = [] -- :: [Role] TODO
                                    ,  userMeta = HM.empty } -- :: HashMap Text Value TODO
+
+{-
+data AuthUser = AuthUser 
+  , userRememberToken :: Maybe Text
+  , userFailedLoginCount :: Int
+  , userLockedOutUntil :: Maybe UTCTime
+  , userCurrentLoginAt :: Maybe UTCTime
+  , userLastLoginAt :: Maybe UTCTime
+  , userCurrentLoginIp :: Maybe ByteString
+  , userLastLoginIp :: Maybe ByteString
+  , userCreatedAt :: Maybe UTCTime
+  , userUpdatedAt :: Maybe UTCTime
+  , userRoles :: [Role]
+  , userMeta :: HashMap Text Value
+  } deriving (Show,Eq)
+
+-}
