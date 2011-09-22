@@ -193,7 +193,7 @@ instance IAuthBackend HdbcAuthManager where
     let (qry, vals) = saveQuery qs tbl au
     stmt  <- prepare conn' qry
     _     <- execute stmt vals
-    -- TODO: Retrieve row to populate ID field after an INSERT
+    -- TODO: Retrieve row to populate ID field after an INSERT... by username?
     return au
 
   lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = query mgr $

@@ -72,10 +72,10 @@ import            Database.HDBC (IConnection(), SqlValue, SqlError, Statement)
 import            Database.HDBC.ColTypes
 import            Snap.Snaplet
 
-data HdbcSnaplet conn = IConnection conn => HdbcSnaplet {
-  hdbcConn :: conn }
+data HdbcSnaplet a = IConnection a => HdbcSnaplet {
+  hdbcConn :: a }
 
-hdbcInit :: IConnection conn => conn -> SnapletInit b (HdbcSnaplet conn)
+hdbcInit :: IConnection a => a -> SnapletInit b (HdbcSnaplet a)
 hdbcInit conn = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
   onUnload $ HDBC.disconnect conn
   return $ HdbcSnaplet conn
@@ -83,12 +83,12 @@ hdbcInit conn = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
 getConn :: (MonadState (HdbcSnaplet a) m) => m a
 getConn = gets hdbcConn
 
-withConn :: (MonadIO m, MonadState (HdbcSnaplet t) m) => (t -> IO b) -> m b
+withConn :: (MonadIO m, MonadState (HdbcSnaplet a) m) => (a -> IO b) -> m b
 withConn f = do
   conn <- gets hdbcConn
   liftIO $ f conn
 
-withConn' :: MonadState (HdbcSnaplet t) m => (t -> b) -> m b
+withConn' :: MonadState (HdbcSnaplet a) m => (a -> b) -> m b
 withConn' f = do
   conn <- gets hdbcConn
   return $ f conn
@@ -102,15 +102,15 @@ commit = withConn HDBC.commit
 rollback :: (IConnection a, MonadIO m, MonadState (HdbcSnaplet a) m) => m ()
 rollback = withConn HDBC.rollback
 
-runRaw :: (IConnection t, MonadState (HdbcSnaplet t) m, MonadIO m) => String
+runRaw :: (IConnection a, MonadState (HdbcSnaplet a) m, MonadIO m) => String
        -> m ()
 runRaw str = withConn (`HDBC.runRaw` str)
 
-run :: (IConnection conn, MonadState (HdbcSnaplet conn) m, MonadIO m) => String
+run :: (IConnection a, MonadState (HdbcSnaplet a) m, MonadIO m) => String
     -> [SqlValue] -> m Integer
 run str vs = withConn (\conn -> HDBC.run conn str vs)
 
-prepare :: (IConnection t, MonadState (HdbcSnaplet t) m, MonadIO m) => String
+prepare :: (IConnection a, MonadState (HdbcSnaplet a) m, MonadIO m) => String
         -> m Statement
 prepare str = withConn (`HDBC.prepare` str)
 
@@ -145,22 +145,22 @@ getTables :: (IConnection a, MonadIO m, MonadState (HdbcSnaplet a) m)
           => m [String]
 getTables = withConn HDBC.getTables
 
-describeTable :: (IConnection t, MonadState (HdbcSnaplet t) m, MonadIO m)
+describeTable :: (IConnection a, MonadState (HdbcSnaplet a) m, MonadIO m)
               => String -> m [(String, SqlColDesc)]
 describeTable str = withConn (`HDBC.describeTable` str)
 
-quickQuery' :: (IConnection conn, MonadState (HdbcSnaplet conn) m, MonadIO m)
+quickQuery' :: (IConnection a, MonadState (HdbcSnaplet a) m, MonadIO m)
             => String -> [SqlValue] -> m [[SqlValue]]
 quickQuery' str vs = withConn (\conn -> HDBC.quickQuery' conn str vs)
 
-quickQuery :: (IConnection conn, MonadState (HdbcSnaplet conn) m, MonadIO m)
+quickQuery :: (IConnection a, MonadState (HdbcSnaplet a) m, MonadIO m)
            => String -> [SqlValue] -> m [[SqlValue]]
 quickQuery str vs = withConn (\conn -> HDBC.quickQuery conn str vs)
 
-sRun :: (IConnection conn, MonadState (HdbcSnaplet conn) m, MonadIO m)
+sRun :: (IConnection a, MonadState (HdbcSnaplet a) m, MonadIO m)
      => String -> [Maybe String] -> m Integer
 sRun str mstrs = withConn (\conn -> HDBC.sRun conn str mstrs)
 
-withTransaction :: (IConnection t, MonadState (HdbcSnaplet t) m, MonadIO m)
-                => (t -> IO b) -> m b
+withTransaction :: (IConnection a, MonadState (HdbcSnaplet a) m, MonadIO m)
+                => (a -> IO b) -> m b
 withTransaction f = withConn (`HDBC.withTransaction` f)
