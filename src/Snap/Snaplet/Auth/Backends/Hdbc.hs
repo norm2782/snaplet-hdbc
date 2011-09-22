@@ -202,7 +202,6 @@ query (HdbcAuthManager conn tbl qries) col vals = withTransaction conn $ \conn' 
     Nothing  ->  return Nothing
     Just mp  ->  return $ Just mkUser
                  where  colLU col' = mp DM.! col' tbl
-                        rdSql' = rdSql id
                         rdSql con col' =
                           case colLU col' of
                             SqlNull  -> Nothing
@@ -211,17 +210,17 @@ query (HdbcAuthManager conn tbl qries) col vals = withTransaction conn $ \conn' 
                                       userId = rdSql UserId colId
                                    ,  userLogin = fromSql $ colLU colLogin
                                    ,  userPassword = rdSql Encrypted colPassword
-                                   ,  userActivatedAt = rdSql' colActivatedAt
-                                   ,  userSuspendedAt = rdSql' colSuspendedAt
-                                   {- ,  userRememberToken = rdSql' colRememberToken-}
+                                   ,  userActivatedAt = rdSql id colActivatedAt
+                                   ,  userSuspendedAt = rdSql id colSuspendedAt
+                                   ,  userRememberToken = rdSql id colRememberToken
                                    ,  userLoginCount = fromSql $ colLU colLoginCount
                                    ,  userFailedLoginCount = fromSql $ colLU colFailedLoginCount
                                    ,  userLockedOutUntil = fromSql $ colLU colLockedOutUntil
-                                   ,  userCurrentLoginAt = rdSql' colCurrentLoginAt
-                                   ,  userLastLoginAt = rdSql' colLastLoginAt
-                                   {- ,  userCurrentLoginIp = rdSql' colCurrentLoginIp-}
-                                   {- ,  userLastLoginIp = rdSql' colLastLoginIp-}
-                                   ,  userCreatedAt = rdSql' colCreatedAt
-                                   ,  userUpdatedAt = rdSql' colUpdatedAt
+                                   ,  userCurrentLoginAt = rdSql id colCurrentLoginAt
+                                   ,  userLastLoginAt = rdSql id colLastLoginAt
+                                   ,  userCurrentLoginIp = rdSql id colCurrentLoginIp
+                                   ,  userLastLoginIp = rdSql id colLastLoginIp
+                                   ,  userCreatedAt = rdSql id colCreatedAt
+                                   ,  userUpdatedAt = rdSql id colUpdatedAt
                                    ,  userRoles = [] -- :: [Role] TODO
                                    ,  userMeta = HM.empty } -- :: HashMap Text Value TODO

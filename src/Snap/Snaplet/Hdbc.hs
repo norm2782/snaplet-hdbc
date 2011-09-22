@@ -102,7 +102,7 @@ commit = withConn HDBC.commit
 rollback :: (IConnection a, MonadIO m, MonadState (HdbcSnaplet a) m) => m ()
 rollback = withConn HDBC.rollback
 
-runRaw :: (IConnection t, MonadState (HdbcSnaplet t) m, MonadIO m) => String 
+runRaw :: (IConnection t, MonadState (HdbcSnaplet t) m, MonadIO m) => String
        -> m ()
 runRaw str = withConn (`HDBC.runRaw` str)
 
