@@ -21,13 +21,13 @@ Library
     Snap.Snaplet.Hdbc
 
   build-depends:
+    base                      >= 4,
     bytestring                >= 0.9.1,
     clientsession             >= 0.4,
     containers                >= 0.3,
     convertible               >= 1.0,
     data-lens                 >= 2.0 && < 2.1,
     data-lens-template        >= 2.1 && < 2.2,
-    haskell2010,
     HDBC                      >= 2.2,
     mtl                       >  2.0   && < 2.1,
     snap                      >= 0.6   && < 0.7,
