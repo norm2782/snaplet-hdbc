@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -13,6 +12,9 @@ module Snap.Snaplet.Hdbc (
   -- Snaplet functions
      HdbcSnaplet(..)
   ,  hdbcInit
+  ,  query
+
+  -- Snapletified HDBC functions
   ,  disconnect
   ,  commit
   ,  rollback
@@ -68,10 +70,13 @@ module Snap.Snaplet.Hdbc (
   ) where
 
 import            Control.Monad.State
+import            Data.Map (Map)
 import qualified  Database.HDBC as HDBC
 import            Database.HDBC (IConnection(), SqlValue, SqlError, Statement)
 import            Database.HDBC.ColTypes
 import            Snap.Snaplet
+
+type Row = Map String SqlValue
 
 class (IConnection c, MonadIO m) => HasHdbc m c | m -> c where
   getHdbc :: m c
@@ -96,6 +101,18 @@ withHdbc' :: HasHdbc m c => (c -> a) -> m a
 withHdbc' f = do
   conn <- getHdbc
   return $ f conn
+
+query :: HasHdbc m c
+      => String      {-^ The raw SQL to execute. Use @?@ to indicate
+                         placeholders. -}
+      -> [SqlValue]  {-^ Values for each placeholder according to its position
+                         in the SQL statement. -}
+      -> m [Row]     {-^ A 'Map' of attribute name to attribute value for each
+                         row. Can be the empty list. -}
+query sql bind = do
+    stmt <- prepare sql
+    liftIO $ HDBC.execute stmt bind
+    liftIO $ HDBC.fetchAllRowsMap stmt
 
 withTransaction :: HasHdbc m c => (c -> IO a) -> m a
 withTransaction f = withHdbc (`HDBC.withTransaction` f)
