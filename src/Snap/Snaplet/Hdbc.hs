@@ -85,8 +85,6 @@ class (IConnection c, MonadIO m) => HasHdbc m c | m -> c where
 data HdbcSnaplet c = IConnection c => HdbcSnaplet {
   hdbcConn :: c }
 
-{- instance IConnection a => HasHdbc (Handler b (HdbcSnaplet a)) a where-}
-  {- getHdbc = getsSnapletState hdbcConn-}
 
 hdbcInit :: IConnection a => a -> SnapletInit b (HdbcSnaplet a)
 hdbcInit conn = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
