@@ -11,6 +11,7 @@
 module Snap.Snaplet.Hdbc (
   -- Snaplet functions
      HdbcSnaplet(..)
+  ,  HasHdbc(..)
   ,  hdbcInit
   ,  query
 
@@ -84,8 +85,8 @@ class (IConnection c, MonadIO m) => HasHdbc m c | m -> c where
 data HdbcSnaplet c = IConnection c => HdbcSnaplet {
   hdbcConn :: c }
 
-instance IConnection a => HasHdbc (Handler b (HdbcSnaplet a)) a where
-  getHdbc = getsSnapletState hdbcConn
+{- instance IConnection a => HasHdbc (Handler b (HdbcSnaplet a)) a where-}
+  {- getHdbc = getsSnapletState hdbcConn-}
 
 hdbcInit :: IConnection a => a -> SnapletInit b (HdbcSnaplet a)
 hdbcInit conn = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
@@ -110,9 +111,9 @@ query :: HasHdbc m c
       -> m [Row]     {-^ A 'Map' of attribute name to attribute value for each
                          row. Can be the empty list. -}
 query sql bind = do
-    stmt <- prepare sql
-    liftIO $ HDBC.execute stmt bind
-    liftIO $ HDBC.fetchAllRowsMap stmt
+  stmt <- prepare sql
+  liftIO $ HDBC.execute stmt bind
+  liftIO $ HDBC.fetchAllRowsMap stmt
 
 withTransaction :: HasHdbc m c => (c -> IO a) -> m a
 withTransaction f = withHdbc (`HDBC.withTransaction` f)
