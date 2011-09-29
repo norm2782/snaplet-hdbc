@@ -213,10 +213,12 @@ query (HdbcAuthManager conn tbl _) (qry, vals) = withTransaction conn $
       Nothing  ->  return Nothing
       Just mp  ->  return $ Just mkUser
                    where  colLU col' = mp DM.! col' tbl
-                          rdSql con col' =
-                            case colLU col' of
-                              SqlNull  -> Nothing
-                              x        -> Just . con $ fromSql x
+                          rdSql con col' = case colLU col' of
+                                             SqlNull  -> Nothing
+                                             x        -> Just . con $ fromSql x
+                          rdInt col = case colLU col of
+                                        SqlNull  -> 0
+                                        x        -> fromSql x
                           mkUser =  AuthUser {
                                        userId = rdSql UserId colId
                                     ,  userLogin = fromSql $ colLU colLogin
@@ -224,9 +226,9 @@ query (HdbcAuthManager conn tbl _) (qry, vals) = withTransaction conn $
                                     ,  userActivatedAt = rdSql id colActivatedAt
                                     ,  userSuspendedAt = rdSql id colSuspendedAt
                                     ,  userRememberToken = rdSql id colRememberToken
-                                    ,  userLoginCount = fromSql $ colLU colLoginCount
-                                    ,  userFailedLoginCount = fromSql $ colLU colFailedLoginCount
-                                    ,  userLockedOutUntil = fromSql $ colLU colLockedOutUntil
+                                    ,  userLoginCount = rdInt colLoginCount
+                                    ,  userFailedLoginCount = rdInt colFailedLoginCount
+                                    ,  userLockedOutUntil = rdSql id colLockedOutUntil
                                     ,  userCurrentLoginAt = rdSql id colCurrentLoginAt
                                     ,  userLastLoginAt = rdSql id colLastLoginAt
                                     ,  userCurrentLoginIp = rdSql id colCurrentLoginIp
