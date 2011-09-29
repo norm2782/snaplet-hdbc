@@ -143,9 +143,9 @@ defSaveQuery tbl au = (mkQry uid, mkVals uid)
                             ++ ") VALUES (" ++
                             intercalate "," (map (const "?") colLst)
                             ++ ")"
-         mkQry (Just _)  =  "UPDATE " ++ tblName tbl ++ " SET (" ++
+         mkQry (Just _)  =  "UPDATE " ++ tblName tbl ++ " SET " ++
                             intercalate "," (map (\f -> f tbl ++ " = ?")  colLst)
-                            ++ ") WHERE " ++ colId tbl ++ " = ?"
+                            ++ " WHERE " ++ colId tbl ++ " = ?"
          mkVals Nothing   = mkVals'
          mkVals (Just i)  = mkVals' ++ [toSql i]
          mkVals' =  [  toSql $ userLogin au
