@@ -14,6 +14,7 @@ module Snap.Snaplet.Hdbc (
   ,  HasHdbc(..)
   ,  hdbcInit
   ,  query
+  ,  query'
 
   -- Snapletified HDBC functions
   ,  disconnect
@@ -112,6 +113,11 @@ query sql bind = do
   stmt <- prepare sql
   liftIO $ HDBC.execute stmt bind
   liftIO $ HDBC.fetchAllRowsMap stmt
+
+query' :: HasHdbc m conn => String -> [SqlValue] -> m Integer
+query' sql bind = withTransaction $ \conn -> do
+  stmt <- HDBC.prepare conn sql
+  liftIO $ HDBC.execute stmt bind
 
 withTransaction :: HasHdbc m c => (c -> IO a) -> m a
 withTransaction f = withHdbc (`HDBC.withTransaction` f)
