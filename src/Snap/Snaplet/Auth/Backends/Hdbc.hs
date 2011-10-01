@@ -193,18 +193,18 @@ instance IAuthBackend HdbcAuthManager where
     let (qry, vals) = saveQuery qs tbl au
     stmt  <- prepare conn' qry
     _     <- execute stmt vals
-    -- TODO: Retrieve row to populate ID field after an INSERT... by username?
+    -- TODO: Retrieve row to populate ID field after an INSERT... by username? By all fields
     return au
 
-  lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = query mgr $
+  lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = authQuery mgr $
     selectQuery qs tbl ByUserId [toSql uid]
-  lookupByLogin mgr@(HdbcAuthManager _ tbl qs) lgn = query mgr $
+  lookupByLogin mgr@(HdbcAuthManager _ tbl qs) lgn = authQuery mgr $
     selectQuery qs tbl ByLogin [toSql lgn]
-  lookupByRememberToken mgr@(HdbcAuthManager _ tbl qs) rmb = query mgr $
+  lookupByRememberToken mgr@(HdbcAuthManager _ tbl qs) rmb = authQuery mgr $
     selectQuery qs tbl ByRememberToken [toSql rmb]
 
-query :: HdbcAuthManager -> QueryAndVals -> IO (Maybe AuthUser)
-query (HdbcAuthManager conn tbl _) (qry, vals) = withTransaction conn $
+authQuery :: HdbcAuthManager -> QueryAndVals -> IO (Maybe AuthUser)
+authQuery (HdbcAuthManager conn tbl _) (qry, vals) = withTransaction conn $
   \conn' -> do
     stmt  <- prepare conn' qry
     _     <- execute stmt vals
@@ -213,12 +213,12 @@ query (HdbcAuthManager conn tbl _) (qry, vals) = withTransaction conn $
       Nothing  ->  return Nothing
       Just mp  ->  return $ Just mkUser
                    where  colLU col' = mp DM.! col' tbl
-                          rdSql con col' = case colLU col' of
-                                             SqlNull  -> Nothing
-                                             x        -> Just . con $ fromSql x
-                          rdInt col = case colLU col of
-                                        SqlNull  -> 0
-                                        x        -> fromSql x
+                          rdSql con col' =  case colLU col' of
+                                              SqlNull  -> Nothing
+                                              x        -> Just . con $ fromSql x
+                          rdInt col =  case colLU col of
+                                         SqlNull  -> 0
+                                         x        -> fromSql x
                           mkUser =  AuthUser {
                                        userId = rdSql UserId colId
                                     ,  userLogin = fromSql $ colLU colLogin
