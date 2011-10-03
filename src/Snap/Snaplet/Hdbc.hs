@@ -87,7 +87,7 @@ data HdbcSnaplet c = IConnection c => HdbcSnaplet {
   hdbcConn :: c }
 
 
-hdbcInit :: IConnection a => a -> SnapletInit b (HdbcSnaplet a)
+hdbcInit :: IConnection c => c -> SnapletInit b (HdbcSnaplet c)
 hdbcInit conn = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
   onUnload $ HDBC.disconnect conn
   return $ HdbcSnaplet conn
