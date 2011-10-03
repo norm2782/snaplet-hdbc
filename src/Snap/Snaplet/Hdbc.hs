@@ -38,6 +38,7 @@ module Snap.Snaplet.Hdbc (
   ,  withHdbc
   ,  withHdbc'
   ,  withTransaction
+  ,  withTransaction'
 
   -- HDBC functions
   ,  SqlValue(..)
@@ -71,6 +72,11 @@ module Snap.Snaplet.Hdbc (
   ,  module Database.HDBC.ColTypes
   ) where
 
+import            Prelude hiding (catch)
+
+import            Control.Exception (SomeException)
+
+import            Control.Monad.CatchIO (onException, MonadCatchIO, catch)
 import            Control.Monad.State
 import            Data.Map (Map)
 import qualified  Database.HDBC as HDBC
@@ -121,6 +127,23 @@ query' sql bind = withTransaction $ \conn -> do
 
 withTransaction :: HasHdbc m c => (c -> IO a) -> m a
 withTransaction f = withHdbc (`HDBC.withTransaction` f)
+
+{-| Run an action inside a transaction. If the action throws an exception, the
+transaction will be rolled back, and the exception rethrown.
+
+> withTransaction' $ do
+>   query "INSERT INTO ..." []
+>   query "DELETE FROM ..." []
+
+-}
+withTransaction' :: (MonadCatchIO m, HasHdbc m c) => m a -> m a
+withTransaction' action = do
+  r <- onException action doRollback
+  commit
+  return r
+  where doRollback = catch rollback doRollbackHandler
+        doRollbackHandler :: MonadCatchIO m => SomeException -> m ()
+        doRollbackHandler _ = return ()
 
 disconnect :: HasHdbc m c => m ()
 disconnect = withHdbc HDBC.disconnect
