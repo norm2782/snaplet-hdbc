@@ -17,23 +17,23 @@ module Snap.Snaplet.Hdbc (
   ,  query'
 
   -- Snapletified HDBC functions
-  ,  disconnect
-  ,  commit
-  ,  rollback
-  ,  runRaw
-  ,  run
-  ,  prepare
   ,  clone
-  ,  hdbcDriverName
-  ,  hdbcClientVer
-  ,  proxiedClientVer
-  ,  proxiedClientName
+  ,  commit
   ,  dbServerVer
   ,  dbTransactionSupport
-  ,  getTables
   ,  describeTable
-  ,  quickQuery'
+  ,  disconnect
+  ,  getTables
+  ,  hdbcClientVer
+  ,  hdbcDriverName
+  ,  prepare
+  ,  proxiedClientName
+  ,  proxiedClientVer
   ,  quickQuery
+  ,  quickQuery'
+  ,  rollback
+  ,  run
+  ,  runRaw
   ,  sRun
   ,  withHdbc
   ,  withHdbc'
@@ -121,8 +121,8 @@ query sql bind = do
   liftIO $ HDBC.fetchAllRowsMap stmt
 
 query' :: HasHdbc m conn => String -> [SqlValue] -> m Integer
-query' sql bind = withTransaction $ \conn -> do
-  stmt <- HDBC.prepare conn sql
+query' sql bind = withTransaction' $ do
+  stmt <- prepare sql
   liftIO $ HDBC.execute stmt bind
 
 withTransaction :: HasHdbc m c => (c -> IO a) -> m a
