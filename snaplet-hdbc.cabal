@@ -1,5 +1,5 @@
 name:           snaplet-hdbc
-version:        0.1.0
+version:        0.1.1
 synopsis:       HDBC snaplet
 description:    HDBC snaplet
 license:        BSD3
@@ -26,11 +26,11 @@ Library
     clientsession             >= 0.4,
     containers                >= 0.3,
     convertible               >= 1.0,
-    data-lens                 >= 2.0 && < 2.1,
-    data-lens-template        >= 2.1 && < 2.2,
+    data-lens                 >= 2.0   && < 2.1,
+    data-lens-template        >= 2.1   && < 2.2,
     HDBC                      >= 2.2,
     mtl                       >  2.0   && < 2.1,
-    MonadCatchIO-mtl          >= 0.3 && < 0.4,
+    MonadCatchIO-transformers >= 0.2.1 && < 0.3,
     snap                      >= 0.6   && < 0.7,
     text                      >= 0.11,
     unordered-containers      >= 0.1.4

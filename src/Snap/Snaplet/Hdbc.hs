@@ -86,7 +86,7 @@ import            Snap.Snaplet
 
 type Row = Map String SqlValue
 
-class (IConnection c, MonadIO m) => HasHdbc m c | m -> c where
+class (IConnection c, MonadCatchIO m) => HasHdbc m c | m -> c where
   getHdbc :: m c
 
 data HdbcSnaplet c = IConnection c => HdbcSnaplet {
