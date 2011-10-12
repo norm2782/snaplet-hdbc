@@ -16,8 +16,7 @@ import            Database.HDBC
 import            Web.ClientSession
 
 import            Snap.Snaplet
-import            Snap.Snaplet.Auth.AuthManager
-import            Snap.Snaplet.Auth.Types
+import            Snap.Snaplet.Auth
 import            Snap.Snaplet.Session
 
 initHdbcAuthManager
