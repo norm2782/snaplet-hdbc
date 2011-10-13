@@ -74,11 +74,11 @@ module Snap.Snaplet.Hdbc (
 
 import            Prelude hiding (catch)
 
-import            Control.Exception (SomeException)
-
-import            Control.Monad.CatchIO (onException, MonadCatchIO, catch)
+import            Control.Exception.Control hiding (Handler)
+import            Control.Monad.IO.Control
 import            Control.Monad.State
 import            Data.Map (Map)
+import            Data.Pool
 import qualified  Database.HDBC as HDBC
 import            Database.HDBC (IConnection(), SqlValue, SqlError, Statement)
 import            Database.HDBC.ColTypes
@@ -86,27 +86,30 @@ import            Snap.Snaplet
 
 type Row = Map String SqlValue
 
-class (IConnection c, MonadCatchIO m) => HasHdbc m c | m -> c where
-  getHdbc :: m c
+class  (IConnection c, MonadControlIO m) => HasHdbc m c | m -> c where
+  getPool :: m (Pool c)
 
 data HdbcSnaplet c = IConnection c => HdbcSnaplet {
-  hdbcConn :: c }
+  hdbcPool :: Pool c }
 
+hdbcInit :: IConnection c => IO c -> SnapletInit b (HdbcSnaplet c)
+hdbcInit conn = hdbcInit' $ createPool conn HDBC.disconnect 1 300 1
 
-hdbcInit :: IConnection c => c -> SnapletInit b (HdbcSnaplet c)
-hdbcInit conn = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
-  onUnload $ HDBC.disconnect conn
-  return $ HdbcSnaplet conn
+hdbcInit' :: IConnection c => IO (Pool c) -> SnapletInit b (HdbcSnaplet c)
+hdbcInit' pl = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
+  pl' <- liftIO pl
+  onUnload $ withResource pl' HDBC.disconnect
+  return $ HdbcSnaplet pl'
 
 withHdbc :: HasHdbc m c => (c -> IO a) -> m a
 withHdbc f = do
-  conn <- getHdbc
-  liftIO $ f conn
+  pl <- getPool
+  withResource pl (\conn -> liftIO $ f conn)
 
 withHdbc' :: HasHdbc m c => (c -> a) -> m a
 withHdbc' f = do
-  conn <- getHdbc
-  return $ f conn
+  pl <- getPool
+  withResource pl (\conn -> return $ f conn)
 
 query :: HasHdbc m c
       => String      {-^ The raw SQL to execute. Use @?@ to indicate
@@ -136,13 +139,13 @@ transaction will be rolled back, and the exception rethrown.
 >   query "DELETE FROM ..." []
 
 -}
-withTransaction' :: (MonadCatchIO m, HasHdbc m c) => m a -> m a
+withTransaction' :: HasHdbc m c => m a -> m a
 withTransaction' action = do
   r <- onException action doRollback
   commit
   return r
   where doRollback = catch rollback doRollbackHandler
-        doRollbackHandler :: MonadCatchIO m => SomeException -> m ()
+        doRollbackHandler :: MonadControlIO m => SomeException -> m ()
         doRollbackHandler _ = return ()
 
 disconnect :: HasHdbc m c => m ()

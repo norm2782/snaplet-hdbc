@@ -56,9 +56,9 @@ initHdbcAuthManager' s l pool tbl qs =
   }
 
 data HdbcAuthManager = forall conn. IConnection conn => HdbcAuthManager {
-     dbpool  :: Pool conn
-  ,  table   :: AuthTable
-  ,  qries   :: Queries
+     authDBPool  :: Pool conn
+  ,  table       :: AuthTable
+  ,  qries       :: Queries
 }
 
 data AuthTable = AuthTable {
