@@ -28,7 +28,7 @@ initHdbcAuthManager
   -> Queries
   -> SnapletInit b (AuthManager b)
 initHdbcAuthManager s l conn tbl qs = initHdbcAuthManager' s l pool tbl qs
-  where pool = createPool conn disconnect 1 5 1
+  where pool = createPool conn disconnect 1 300 1
 
 initHdbcAuthManager'
   :: IConnection conn
