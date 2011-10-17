@@ -89,6 +89,9 @@ type Row = Map String SqlValue
 class  (IConnection c, MonadControlIO m) => HasHdbc m c | m -> c where
   getPool :: m (Pool c)
 
+instance MonadControlIO (Handler b v) where
+  liftControlIO f = liftIO (f return)
+
 data HdbcSnaplet c = IConnection c => HdbcSnaplet {
   hdbcPool :: Pool c }
 
