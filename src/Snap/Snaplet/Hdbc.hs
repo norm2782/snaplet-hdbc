@@ -74,8 +74,8 @@ module Snap.Snaplet.Hdbc (
 
 import            Prelude hiding (catch)
 
-import            Control.Exception.Control hiding (Handler)
-import            Control.Monad.IO.Control
+import            Control.Exception (SomeException)
+import            Control.Monad.CatchIO
 import            Control.Monad.State
 import            Data.Map (Map)
 import            Data.Pool
@@ -86,7 +86,7 @@ import            Snap.Snaplet
 
 type Row = Map String SqlValue
 
-class  (IConnection c, MonadControlIO m) => HasHdbc m c | m -> c where
+class  (IConnection c, MonadCatchIO m) => HasHdbc m c | m -> c where
   getPool :: m (Pool c)
 
 data HdbcSnaplet c = IConnection c => HdbcSnaplet {
@@ -145,7 +145,7 @@ withTransaction' action = do
   commit
   return r
   where doRollback = catch rollback doRollbackHandler
-        doRollbackHandler :: MonadControlIO m => SomeException -> m ()
+        doRollbackHandler :: MonadCatchIO m => SomeException -> m ()
         doRollbackHandler _ = return ()
 
 disconnect :: HasHdbc m c => m ()
