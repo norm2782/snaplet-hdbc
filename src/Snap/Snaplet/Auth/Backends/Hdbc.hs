@@ -11,8 +11,11 @@ import            Data.Convertible.Base
 import qualified  Data.HashMap.Strict as HM
 import            Data.Lens.Lazy
 import            Data.List
+import            Data.Map (Map)
 import qualified  Data.Map as DM
+import            Data.Maybe
 import            Data.Pool
+import            Data.Text (Text)
 import            Database.HDBC
 import            Snap.Snaplet
 import            Snap.Snaplet.Auth
@@ -136,15 +139,11 @@ colLst =
 
 data LookupQuery = ByUserId | ByLogin | ByRememberToken
 
-type QueryAndVals = (String, [SqlValue])
-type SelectQuery = AuthTable -> LookupQuery -> [SqlValue] -> QueryAndVals
-type ModifyQuery = AuthTable -> AuthUser -> QueryAndVals
-
 data Queries
   =  Queries
-  {  selectQuery  :: SelectQuery
-  ,  saveQuery    :: ModifyQuery
-  ,  deleteQuery  :: ModifyQuery }
+  {  selectQuery  :: AuthTable -> LookupQuery -> [SqlValue] -> (String, [SqlValue])
+  ,  saveQuery    :: AuthTable -> AuthUser -> (String, String, [SqlValue])
+  ,  deleteQuery  :: AuthTable -> AuthUser -> (String, [SqlValue]) }
 
 defQueries :: Queries
 defQueries = Queries {
@@ -152,7 +151,7 @@ defQueries = Queries {
   ,  saveQuery    = defSaveQuery
   ,  deleteQuery  = defDeleteQuery }
 
-defSelectQuery :: SelectQuery
+defSelectQuery :: AuthTable -> LookupQuery -> [SqlValue] -> (String, [SqlValue])
 defSelectQuery tbl luq sqlVals = case luq of
             ByUserId         -> (mkSelect colId, sqlVals)
             ByLogin          -> (mkSelect colLogin, sqlVals)
@@ -160,17 +159,21 @@ defSelectQuery tbl luq sqlVals = case luq of
   where mkSelect whr  =  "SELECT * FROM " ++ tblName tbl ++ " WHERE " ++
                           whr tbl ++ " = ? "
 
-defSaveQuery :: ModifyQuery
-defSaveQuery tbl au = (mkQry uid, mkVals uid)
-  where  uid             =  userId au
+defSaveQuery :: AuthTable -> AuthUser -> (String, String, [SqlValue])
+defSaveQuery tbl au = (mkQry uid, mkIdQry, mkVals uid)
+  where  uid     = userId au
+         qval f  = f tbl ++ " = ?"
          mkQry Nothing   =  "INSERT INTO " ++ tblName tbl ++ " (" ++
                             intercalate "," (map (\f -> f tbl)  colLst)
                             ++ ") VALUES (" ++
                             intercalate "," (map (const "?") colLst)
                             ++ ")"
          mkQry (Just _)  =  "UPDATE " ++ tblName tbl ++ " SET " ++
-                            intercalate "," (map (\f -> f tbl ++ " = ?")  colLst)
+                            intercalate "," (map qval colLst)
                             ++ " WHERE " ++ colId tbl ++ " = ?"
+         mkIdQry =  "SELECT " ++ colId tbl ++ " FROM " ++ tblName tbl ++
+                    " WHERE " ++ intercalate " AND " (map qval
+                    [colLogin, colPassword])
          mkVals Nothing   = mkVals'
          mkVals (Just i)  = mkVals' ++ [toSql i]
          mkVals' =  [  toSql $ userLogin au
@@ -191,7 +194,7 @@ defSaveQuery tbl au = (mkQry uid, mkVals uid)
                     ,  SqlNull -- userMeta au TODO: What should we store here?
                     ]
 
-defDeleteQuery :: ModifyQuery
+defDeleteQuery :: AuthTable -> AuthUser -> (String, [SqlValue])
 defDeleteQuery tbl ausr =
   case userId ausr of
     Nothing   ->  error "Cannot delete user without unique ID"
@@ -216,11 +219,22 @@ instance IAuthBackend HdbcAuthManager where
 
   save (HdbcAuthManager pool tbl qs) au = withResource pool $
     \conn -> withTransaction conn $ \conn' -> do
-      let (qry, vals) = saveQuery qs tbl au
+      let (qry, idQry, vals) = saveQuery qs tbl au
       stmt  <- prepare conn' qry
       _     <- execute stmt vals
-      -- TODO: Retrieve row to populate ID field after an INSERT... by username? By all fields
-      return au
+      if isJust $ userId au
+        then  return au
+        else  do
+          stmt'  <- prepare conn' idQry
+          _      <- execute stmt'  [  toSql $ userLogin au
+                                   ,  toSql $ userPassword au]
+          rw     <- fetchRow stmt'
+          nid    <- case rw of
+                      Nothing     -> fail $  "Failed to fetch the newly inserted row. " ++
+                                             "It might not have been inserted at all."
+                      Just []     -> fail "Something went wrong"
+                      Just (x:_)  -> return (fromSql x :: Text)
+          return $ au { userId = Just (UserId nid) }
 
   lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = authQuery mgr $
     selectQuery qs tbl ByUserId [toSql uid]
@@ -229,37 +243,40 @@ instance IAuthBackend HdbcAuthManager where
   lookupByRememberToken mgr@(HdbcAuthManager _ tbl qs) rmb = authQuery mgr $
     selectQuery qs tbl ByRememberToken [toSql rmb]
 
-authQuery :: HdbcAuthManager -> QueryAndVals -> IO (Maybe AuthUser)
-authQuery (HdbcAuthManager pool tbl _) (qry, vals) = withResource pool $ \conn -> withTransaction conn $
-  \conn' -> do
+authQuery :: HdbcAuthManager -> (String, [SqlValue]) -> IO (Maybe AuthUser)
+authQuery (HdbcAuthManager pool tbl _) (qry, vals) = withResource pool $
+  \conn -> withTransaction conn $ \conn' -> do
     stmt  <- prepare conn' qry
     _     <- execute stmt vals
     res   <- fetchRowMap stmt
     case res of
       Nothing  ->  return Nothing
-      Just mp  ->  return $ Just mkUser
-                   where  colLU col' = mp DM.! col' tbl
-                          rdSql con col' =  case colLU col' of
-                                              SqlNull  -> Nothing
-                                              x        -> Just . con $ fromSql x
-                          rdInt col =  case colLU col of
-                                         SqlNull  -> 0
-                                         x        -> fromSql x
-                          mkUser =  AuthUser {
-                                       userId = rdSql UserId colId
-                                    ,  userLogin = fromSql $ colLU colLogin
-                                    ,  userPassword = rdSql Encrypted colPassword
-                                    ,  userActivatedAt = rdSql id colActivatedAt
-                                    ,  userSuspendedAt = rdSql id colSuspendedAt
-                                    ,  userRememberToken = rdSql id colRememberToken
-                                    ,  userLoginCount = rdInt colLoginCount
-                                    ,  userFailedLoginCount = rdInt colFailedLoginCount
-                                    ,  userLockedOutUntil = rdSql id colLockedOutUntil
-                                    ,  userCurrentLoginAt = rdSql id colCurrentLoginAt
-                                    ,  userLastLoginAt = rdSql id colLastLoginAt
-                                    ,  userCurrentLoginIp = rdSql id colCurrentLoginIp
-                                    ,  userLastLoginIp = rdSql id colLastLoginIp
-                                    ,  userCreatedAt = rdSql id colCreatedAt
-                                    ,  userUpdatedAt = rdSql id colUpdatedAt
-                                    ,  userRoles = [] -- :: [Role] TODO
-                                    ,  userMeta = HM.empty } -- :: HashMap Text Value TODO
+      Just mp  ->  return $ Just $ mkUser tbl mp
+
+mkUser :: AuthTable -> Map String SqlValue -> AuthUser
+mkUser tbl mp =
+  let  colLU col' = mp DM.! col' tbl
+       rdSql con col' =  case colLU col' of
+                           SqlNull  -> Nothing
+                           x        -> Just . con $ fromSql x
+       rdInt col =  case colLU col of
+                      SqlNull  -> 0
+                      x        -> fromSql x
+  in   AuthUser
+       {  userId = rdSql UserId colId
+       ,  userLogin = fromSql $ colLU colLogin
+       ,  userPassword = rdSql Encrypted colPassword
+       ,  userActivatedAt = rdSql id colActivatedAt
+       ,  userSuspendedAt = rdSql id colSuspendedAt
+       ,  userRememberToken = rdSql id colRememberToken
+       ,  userLoginCount = rdInt colLoginCount
+       ,  userFailedLoginCount = rdInt colFailedLoginCount
+       ,  userLockedOutUntil = rdSql id colLockedOutUntil
+       ,  userCurrentLoginAt = rdSql id colCurrentLoginAt
+       ,  userLastLoginAt = rdSql id colLastLoginAt
+       ,  userCurrentLoginIp = rdSql id colCurrentLoginIp
+       ,  userLastLoginIp = rdSql id colLastLoginIp
+       ,  userCreatedAt = rdSql id colCreatedAt
+       ,  userUpdatedAt = rdSql id colUpdatedAt
+       ,  userRoles = [] -- :: [Role] TODO
+       ,  userMeta = HM.empty } -- :: HashMap Text Value TODO

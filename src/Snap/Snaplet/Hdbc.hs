@@ -141,14 +141,14 @@ hdbcInit' pl = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
 withHdbc :: HasHdbc m c => (c -> IO a) -> m a
 withHdbc f = do
   pl <- getPool
-  withResource pl (\conn -> liftIO $ f conn)
+  withResource pl (liftIO . f)
 
 -- | Get a new connection from the resource pool, apply the provided function
 -- to it and return the result in of the compution in monad 'm'.
 withHdbc' :: HasHdbc m c => (c -> a) -> m a
 withHdbc' f = do
   pl <- getPool
-  withResource pl (\conn -> return $ f conn)
+  withResource pl (return . f)
 
 -- | Execute a @SELECT@ query on the database by passing the query as 'String',
 -- together with a list of values to bind to it. A list of 'Row's is returned.
