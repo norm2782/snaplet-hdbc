@@ -4,10 +4,9 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
 
-{-|
-
-  This module provides a very thin wrapper around HDBC
--}
+-- | This module provides a very thin wrapper around HDBC. It wraps some of the
+-- HDBC functions in more convenient functions and re-exports the rest of the
+-- HDBC functions.
 module Snap.Snaplet.Hdbc (
   -- Snaplet functions
      HdbcSnaplet(..)
@@ -74,8 +73,8 @@ module Snap.Snaplet.Hdbc (
 
 import            Prelude hiding (catch)
 
-import            Control.Exception (SomeException)
-import            Control.Monad.CatchIO
+import            Control.Exception.Control hiding (Handler)
+import            Control.Monad.IO.Control
 import            Control.Monad.State
 import            Data.Map (Map)
 import            Data.Pool
@@ -84,72 +83,122 @@ import            Database.HDBC (IConnection(), SqlValue, SqlError, Statement)
 import            Database.HDBC.ColTypes
 import            Snap.Snaplet
 
+-- | A map with the column name as key and the value from the database as value
 type Row = Map String SqlValue
 
-class  (IConnection c, MonadCatchIO m) => HasHdbc m c | m -> c where
+-- | Instantiate this typeclass on 'Handler b YourSnapletState' so this snaplet
+-- can find the resource pool. Typically you would instantiate it for Snap's
+-- Handler type and use your snaplet's lens to this snaplet to access this
+-- snaplet's state, which contains the pool. Suppose your snaplet state type is
+-- defined as follows, where 'Connection' is the connection type from the HDBC
+-- database adapter of your choosing:
+--
+-- > data App = App
+-- >  { _dbLens :: Snaplet (HdbcSnaplet Connection) }
+--
+-- Then a typical instance you will want to define in your own snaplet is the
+-- following:
+--
+-- > instance HasHdbc (Handler b App) Connection where
+-- >   getPool = with dbLens $ gets hdbcPool
+--
+class (IConnection c, MonadControlIO m) => HasHdbc m c | m -> c where
   getPool :: m (Pool c)
 
+-- | This is (hopefully) a temporary instance, which will disppear once the
+-- entire snap framework is switched to 'MonadControlIO'.
 instance MonadControlIO (Handler b v) where
   liftControlIO f = liftIO (f return)
 
-data HdbcSnaplet c = IConnection c => HdbcSnaplet {
-  hdbcPool :: Pool c }
+-- | The snaplet state type containing a resource pool, parameterised by a raw
+-- HDBC connection.
+data HdbcSnaplet c
+  =   IConnection c
+  =>  HdbcSnaplet
+  {   hdbcPool :: Pool c }
 
+-- | Initialise the snaplet by providing it with a raw HDBC connection. A
+-- resource pool is created with some default parameters that should be fine
+-- for most common usecases. If a custom resource pool configuration is
+-- desired, use the `hdbcInit'` initialiser instead. When the snaplet is
+-- unloaded, the 'disconnect' function is called to close any remaining
+-- connections.
 hdbcInit :: IConnection c => IO c -> SnapletInit b (HdbcSnaplet c)
 hdbcInit conn = hdbcInit' $ createPool conn HDBC.disconnect 1 300 1
 
+-- | Instead of a raw HDBC connection, this initialiser expects a
+-- pre-configured resource pool that dispenses HDBC connections. When the
+-- snaplet is unloaded, the 'disconnect' function is called to close any
+-- remaining connections.
 hdbcInit' :: IConnection c => IO (Pool c) -> SnapletInit b (HdbcSnaplet c)
 hdbcInit' pl = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
   pl' <- liftIO pl
   onUnload $ withResource pl' HDBC.disconnect
   return $ HdbcSnaplet pl'
 
+-- | Get a new connection from the resource pool, apply the provided function
+-- to it and return the result in of the 'IO' compution in monad @m@.
 withHdbc :: HasHdbc m c => (c -> IO a) -> m a
 withHdbc f = do
   pl <- getPool
   withResource pl (\conn -> liftIO $ f conn)
 
+-- | Get a new connection from the resource pool, apply the provided function
+-- to it and return the result in of the compution in monad 'm'.
 withHdbc' :: HasHdbc m c => (c -> a) -> m a
 withHdbc' f = do
   pl <- getPool
   withResource pl (\conn -> return $ f conn)
 
-query :: HasHdbc m c
-      => String      {-^ The raw SQL to execute. Use @?@ to indicate
-                         placeholders. -}
-      -> [SqlValue]  {-^ Values for each placeholder according to its position
-                         in the SQL statement. -}
-      -> m [Row]     {-^ A 'Map' of attribute name to attribute value for each
-                         row. Can be the empty list. -}
+-- | Execute a @SELECT@ query on the database by passing the query as 'String',
+-- together with a list of values to bind to it. A list of 'Row's is returned.
+query
+  :: HasHdbc m c
+  => String      -- ^ The raw SQL to execute. Use @?@ to indicate placeholders.
+  -> [SqlValue]  -- ^ Values for each placeholder according to its position in
+                 --   the SQL statement.
+  -> m [Row]     -- ^ A 'Map' of attribute name to attribute value for each
+                 --   row. Can be the empty list.
 query sql bind = do
   stmt <- prepare sql
   liftIO $ HDBC.execute stmt bind
   liftIO $ HDBC.fetchAllRowsMap stmt
 
+-- | Similar to 'query', but instead of returning a list of 'Row's, it returns
+-- an 'Integer' indicating the numbers of affected rows. This is typically used
+-- for @INSERT@, @UPDATE@ and @DELETE@ queries.
 query' :: HasHdbc m conn => String -> [SqlValue] -> m Integer
 query' sql bind = withTransaction' $ do
   stmt <- prepare sql
   liftIO $ HDBC.execute stmt bind
 
+-- | Run an action inside a transaction. If the action throws an exception, the
+-- transaction will be rolled back, and the exception rethrown.
+--
+-- > withTransaction' $ \conn -> do ...
+--
 withTransaction :: HasHdbc m c => (c -> IO a) -> m a
 withTransaction f = withHdbc (`HDBC.withTransaction` f)
 
-{-| Run an action inside a transaction. If the action throws an exception, the
-transaction will be rolled back, and the exception rethrown.
-
-> withTransaction' $ do
->   query "INSERT INTO ..." []
->   query "DELETE FROM ..." []
-
--}
+-- | Run an action inside a transaction. If the action throws an exception, the
+-- transaction will be rolled back, and the exception rethrown.
+--
+-- > withTransaction' $ do
+-- >   query "INSERT INTO ..." []
+-- >   query "DELETE FROM ..." []
+--
 withTransaction' :: HasHdbc m c => m a -> m a
 withTransaction' action = do
   r <- onException action doRollback
   commit
   return r
   where doRollback = catch rollback doRollbackHandler
-        doRollbackHandler :: MonadCatchIO m => SomeException -> m ()
+        doRollbackHandler :: MonadControlIO m => SomeException -> m ()
         doRollbackHandler _ = return ()
+
+-- | The functions provided below are wrappers around the original HDBC
+-- functions. Please refer to the HDBC documentation to see what they do and
+-- how they work.
 
 disconnect :: HasHdbc m c => m ()
 disconnect = withHdbc HDBC.disconnect

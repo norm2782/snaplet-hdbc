@@ -3,7 +3,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-
+-- | Authentication backend using HDBC
 module Snap.Snaplet.Auth.Backends.Hdbc where
 
 import            Control.Monad.State
@@ -19,24 +19,29 @@ import            Snap.Snaplet.Auth
 import            Snap.Snaplet.Session
 import            Web.ClientSession
 
+-- | Initialises this HDBC snaplet. It automatically configures a resource
+-- pool with commonly acceptable default settings. Use `initHdbcAuthManager'`
+-- to initialise with a custom resource pool.
 initHdbcAuthManager
   :: IConnection conn
-  => AuthSettings
-  -> Lens b (Snaplet SessionManager)
-  -> IO conn
-  -> AuthTable
-  -> Queries
+  => AuthSettings  -- ^ Auth settings
+  -> Lens b (Snaplet SessionManager)  -- ^ Lens to the session manager
+  -> IO conn       -- ^ Raw HDBC connection
+  -> AuthTable     -- ^ Authentication table configuration
+  -> Queries       -- ^ Queries to be used for authentication
   -> SnapletInit b (AuthManager b)
 initHdbcAuthManager s l conn tbl qs = initHdbcAuthManager' s l pool tbl qs
   where pool = createPool conn disconnect 1 300 1
 
+-- | Initialises this HDBC snaplet with a custom resource pool.
 initHdbcAuthManager'
   :: IConnection conn
-  => AuthSettings
-  -> Lens b (Snaplet SessionManager)
-  -> IO (Pool conn)
-  -> AuthTable
-  -> Queries
+  => AuthSettings    -- ^ Auth settings
+  -> Lens b (Snaplet SessionManager)  -- ^ Lens to the session manager
+  -> IO (Pool conn)  -- ^ A pre-configured resource pool which dispenses
+                     --   HDBC connections
+  -> AuthTable       -- ^ Authentication table configuration
+  -> Queries         -- ^ Queries to be used for authentication
   -> SnapletInit b (AuthManager b)
 initHdbcAuthManager' s l pool tbl qs =
   makeSnaplet  "HdbcAuthManager"
@@ -44,25 +49,29 @@ initHdbcAuthManager' s l pool tbl qs =
                Nothing $ liftIO $ do
   key  <- getKey (asSiteKey s)
   pl   <- pool
-  return AuthManager {
-      backend = HdbcAuthManager pl tbl qs
-    , session = l
-    , activeUser = Nothing
-    , minPasswdLen = asMinPasswdLen s
-    , rememberCookieName = asRememberCookieName s
-    , rememberPeriod = asRememberPeriod s
-    , siteKey = key
-    , lockout = asLockout s
-  }
+  return AuthManager
+    {  backend = HdbcAuthManager pl tbl qs
+    ,  session = l
+    ,  activeUser = Nothing
+    ,  minPasswdLen = asMinPasswdLen s
+    ,  rememberCookieName = asRememberCookieName s
+    ,  rememberPeriod = asRememberPeriod s
+    ,  siteKey = key
+    ,  lockout = asLockout s }
 
-data HdbcAuthManager = forall conn. IConnection conn => HdbcAuthManager {
-     authDBPool  :: Pool conn
-  ,  table       :: AuthTable
-  ,  qries       :: Queries
-}
+-- | Authmanager state containing the resource pool and the table/query
+-- configuration.
+data HdbcAuthManager
+  =   forall conn. IConnection conn
+  =>  HdbcAuthManager
+  {   authDBPool :: Pool conn
+  ,   table  :: AuthTable
+  ,   qries  :: Queries }
 
-data AuthTable = AuthTable {
-     tblName :: String
+-- | Datatype containing the names of the columns for the authentication table.
+data AuthTable
+  =  AuthTable
+  {  tblName :: String
   ,  colId :: String
   ,  colLogin :: String
   ,  colPassword :: String
@@ -81,9 +90,11 @@ data AuthTable = AuthTable {
   ,  colRoles :: String
   ,  colMeta :: String }
 
+-- | Default authentication table layout
 defAuthTable :: AuthTable
-defAuthTable = AuthTable  {
-     tblName = "users"
+defAuthTable
+  =  AuthTable
+  {  tblName = "users"
   ,  colId = "uid"
   ,  colLogin = "email"
   ,  colPassword = "password"
@@ -102,23 +113,26 @@ defAuthTable = AuthTable  {
   ,  colRoles = "roles"
   ,  colMeta = "meta" }
 
+-- | List of deconstructors so it's easier to extract column names form an
+-- 'AuthTable'.
 colLst :: [AuthTable -> String]
-colLst =  [  colLogin
-          ,  colPassword
-          ,  colActivatedAt
-          ,  colSuspendedAt
-          ,  colRememberToken
-          ,  colLoginCount
-          ,  colFailedLoginCount
-          ,  colLockedOutUntil
-          ,  colCurrentLoginAt
-          ,  colLastLoginAt
-          ,  colCurrentLoginIp
-          ,  colLastLoginIp
-          ,  colCreatedAt
-          ,  colUpdatedAt
-          ,  colRoles
-          ,  colMeta ]
+colLst =
+  [  colLogin
+  ,  colPassword
+  ,  colActivatedAt
+  ,  colSuspendedAt
+  ,  colRememberToken
+  ,  colLoginCount
+  ,  colFailedLoginCount
+  ,  colLockedOutUntil
+  ,  colCurrentLoginAt
+  ,  colLastLoginAt
+  ,  colCurrentLoginIp
+  ,  colLastLoginIp
+  ,  colCreatedAt
+  ,  colUpdatedAt
+  ,  colRoles
+  ,  colMeta ]
 
 data LookupQuery = ByUserId | ByLogin | ByRememberToken
 
@@ -126,11 +140,11 @@ type QueryAndVals = (String, [SqlValue])
 type SelectQuery = AuthTable -> LookupQuery -> [SqlValue] -> QueryAndVals
 type ModifyQuery = AuthTable -> AuthUser -> QueryAndVals
 
-data Queries = Queries {
-     selectQuery  :: SelectQuery
+data Queries
+  =  Queries
+  {  selectQuery  :: SelectQuery
   ,  saveQuery    :: ModifyQuery
-  ,  deleteQuery  :: ModifyQuery
-}
+  ,  deleteQuery  :: ModifyQuery }
 
 defQueries :: Queries
 defQueries = Queries {
