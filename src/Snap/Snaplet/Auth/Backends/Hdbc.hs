@@ -249,11 +249,12 @@ prepExec conn qry vals = withTransaction conn $ \conn' -> do
   return ()
 
 authQuery :: HdbcAuthManager -> (String, [SqlValue]) -> IO (Maybe AuthUser)
-authQuery (HdbcAuthManager pool tbl _) (qry, vals) = withResource pool $
-  \conn -> do
-    stmt  <- prepare conn qry
-    _     <- execute stmt vals
-    res   <- fetchRowMap stmt
+authQuery (HdbcAuthManager pool tbl _) (qry, vals) =
+  withResource pool $ \conn -> do
+    res <- do
+      stmt  <- prepare conn qry
+      _     <- execute stmt vals
+      fetchRowMap stmt
     return $ (return . mkUser tbl) =<< res
 
 mkUser :: AuthTable -> Map String SqlValue -> AuthUser
