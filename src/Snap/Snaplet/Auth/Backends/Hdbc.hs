@@ -229,10 +229,10 @@ instance IAuthBackend HdbcAuthManager where
                                      ,  toSql $ userPassword au]
             fetchRow stmt'
           nid  <- case rw of
-                  Nothing     -> fail $  "Failed to fetch the newly inserted row. " ++
-                                         "It might not have been inserted at all."
-                  Just []     -> fail "Something went wrong"
-                  Just (x:_)  -> return (fromSql x :: Text)
+                    Nothing     -> fail $  "Failed to fetch the newly inserted row. " ++
+                                           "It might not have been inserted at all."
+                    Just []     -> fail "Something went wrong"
+                    Just (x:_)  -> return (fromSql x :: Text)
           return $ au { userId = Just (UserId nid) }
 
   lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = authQuery mgr $
@@ -253,7 +253,7 @@ authQuery (HdbcAuthManager pool tbl _) (qry, vals) = withResource pool $
   \conn -> do
     stmt  <- prepare conn qry
     _     <- execute stmt vals
-    res <- fetchRowMap stmt
+    res   <- fetchRowMap stmt
     return $ (return . mkUser tbl) =<< res
 
 mkUser :: AuthTable -> Map String SqlValue -> AuthUser
