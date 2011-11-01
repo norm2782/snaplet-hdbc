@@ -255,9 +255,7 @@ authQuery (HdbcAuthManager pool tbl _) (qry, vals) = withResource pool $
       stmt  <- prepare conn' qry
       _     <- execute stmt vals
       fetchRowMap stmt
-    case res of
-      Nothing  -> return Nothing
-      Just mp  -> return $ Just $ mkUser tbl mp
+    return $ (return . mkUser tbl) =<< res
 
 mkUser :: AuthTable -> Map String SqlValue -> AuthUser
 mkUser tbl mp =
