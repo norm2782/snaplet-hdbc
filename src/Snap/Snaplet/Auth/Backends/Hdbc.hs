@@ -210,30 +210,27 @@ instance Convertible UserId SqlValue where
   safeConvert (UserId uid) = Right $ toSql uid
 
 instance IAuthBackend HdbcAuthManager where
-  destroy (HdbcAuthManager pool tbl qs) au = withResource pool $
-    \conn -> do
-      let (qry, vals) = deleteQuery qs tbl au
-      _ <- prepExec conn qry vals
-      return ()
+  destroy (HdbcAuthManager pool tbl qs) au =
+    let  (qry, vals) = deleteQuery qs tbl au
+    in   withResource pool $ prepExec qry vals
 
-  save (HdbcAuthManager pool tbl qs) au = withResource pool $
-    \conn -> do
-      let (qry, idQry, vals) = saveQuery qs tbl au
-      _ <- prepExec conn qry vals
-      if isJust $ userId au
-        then  return au
-        else  do
-          rw   <- withTransaction conn $ \conn' -> do
-            stmt'  <- prepare conn' idQry
-            _      <- execute stmt'  [  toSql $ userLogin au
-                                     ,  toSql $ userPassword au]
-            fetchRow stmt'
-          nid  <- case rw of
-                    Nothing     -> fail $  "Failed to fetch the newly inserted row. " ++
-                                           "It might not have been inserted at all."
-                    Just []     -> fail "Something went wrong"
-                    Just (x:_)  -> return (fromSql x :: Text)
-          return $ au { userId = Just (UserId nid) }
+  save (HdbcAuthManager pool tbl qs) au = do
+    let (qry, idQry, vals) = saveQuery qs tbl au
+    withResource pool $ prepExec qry vals
+    if isJust $ userId au
+      then  return au
+      else  do
+        rw   <- withResource pool $ \conn -> withTransaction conn $ \conn' -> do
+          stmt'  <- prepare conn' idQry
+          _      <- execute stmt'  [  toSql $ userLogin au
+                                   ,  toSql $ userPassword au]
+          fetchRow stmt'
+        nid  <-  case rw of
+                   Nothing     -> fail $  "Failed to fetch the newly inserted row. " ++
+                                          "It might not have been inserted at all."
+                   Just []     -> fail "Something went wrong"
+                   Just (x:_)  -> return (fromSql x :: Text)
+        return $ au { userId = Just (UserId nid) }
 
   lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = authQuery mgr $
     selectQuery qs tbl ByUserId [toSql uid]
@@ -242,20 +239,19 @@ instance IAuthBackend HdbcAuthManager where
   lookupByRememberToken mgr@(HdbcAuthManager _ tbl qs) rmb = authQuery mgr $
     selectQuery qs tbl ByRememberToken [toSql rmb]
 
-prepExec :: IConnection conn => conn -> String -> [SqlValue] -> IO ()
-prepExec conn qry vals = withTransaction conn $ \conn' -> do
+prepExec :: IConnection conn => String -> [SqlValue] -> conn -> IO ()
+prepExec qry vals conn = withTransaction conn $ \conn' -> do
   stmt  <- prepare conn' qry
   _     <- execute stmt vals
   return ()
 
 authQuery :: HdbcAuthManager -> (String, [SqlValue]) -> IO (Maybe AuthUser)
-authQuery (HdbcAuthManager pool tbl _) (qry, vals) =
-  withResource pool $ \conn -> do
-    res <- do
-      stmt  <- prepare conn qry
-      _     <- execute stmt vals
-      fetchRowMap stmt
-    return $ (return . mkUser tbl) =<< res
+authQuery (HdbcAuthManager pool tbl _) (qry, vals) = do
+  res <- withResource pool $ \conn -> do
+    stmt  <- prepare conn qry
+    _     <- execute stmt vals
+    fetchRowMap stmt
+  return $ (return . mkUser tbl) =<< res
 
 mkUser :: AuthTable -> Map String SqlValue -> AuthUser
 mkUser tbl mp =
