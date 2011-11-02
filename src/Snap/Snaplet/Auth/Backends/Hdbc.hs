@@ -14,11 +14,11 @@ import            Data.List
 import            Data.Map (Map)
 import qualified  Data.Map as DM
 import            Data.Maybe
-import            Data.Pool
 import            Data.Text (Text)
 import            Database.HDBC
 import            Snap.Snaplet
 import            Snap.Snaplet.Auth
+import            Snap.Snaplet.Hdbc.Types
 import            Snap.Snaplet.Session
 import            Web.ClientSession
 
@@ -26,34 +26,20 @@ import            Web.ClientSession
 -- pool with commonly acceptable default settings. Use `initHdbcAuthManager'`
 -- to initialise with a custom resource pool.
 initHdbcAuthManager
-  :: IConnection conn
+  :: (ConnSrc s, IConnection c)
   => AuthSettings  -- ^ Auth settings
   -> Lens b (Snaplet SessionManager)  -- ^ Lens to the session manager
-  -> IO conn       -- ^ Raw HDBC connection
+  -> s c           -- ^ Raw HDBC connection
   -> AuthTable     -- ^ Authentication table configuration
   -> Queries       -- ^ Queries to be used for authentication
   -> SnapletInit b (AuthManager b)
-initHdbcAuthManager s l conn tbl qs = initHdbcAuthManager' s l pool tbl qs
-  where pool = createPool conn disconnect 1 300 1
-
--- | Initialises this HDBC snaplet with a custom resource pool.
-initHdbcAuthManager'
-  :: IConnection conn
-  => AuthSettings    -- ^ Auth settings
-  -> Lens b (Snaplet SessionManager)  -- ^ Lens to the session manager
-  -> IO (Pool conn)  -- ^ A pre-configured resource pool which dispenses
-                     --   HDBC connections
-  -> AuthTable       -- ^ Authentication table configuration
-  -> Queries         -- ^ Queries to be used for authentication
-  -> SnapletInit b (AuthManager b)
-initHdbcAuthManager' s l pool tbl qs =
+initHdbcAuthManager s l conn tbl qs =
   makeSnaplet  "HdbcAuthManager"
                "A snaplet providing user authentication using an HDBC backend"
                Nothing $ liftIO $ do
-  key  <- getKey (asSiteKey s)
-  pl   <- pool
+  key <- getKey (asSiteKey s)
   return AuthManager
-    {  backend = HdbcAuthManager pl tbl qs
+    {  backend = HdbcAuthManager conn tbl qs
     ,  session = l
     ,  activeUser = Nothing
     ,  minPasswdLen = asMinPasswdLen s
@@ -65,9 +51,9 @@ initHdbcAuthManager' s l pool tbl qs =
 -- | Authmanager state containing the resource pool and the table/query
 -- configuration.
 data HdbcAuthManager
-  =   forall conn. IConnection conn
+  =   forall c s. (IConnection c, ConnSrc s)
   =>  HdbcAuthManager
-  {   authDBPool :: Pool conn
+  {   authDBPool :: s c
   ,   table  :: AuthTable
   ,   qries  :: Queries }
 
@@ -212,24 +198,24 @@ instance Convertible UserId SqlValue where
 instance IAuthBackend HdbcAuthManager where
   destroy (HdbcAuthManager pool tbl qs) au =
     let  (qry, vals) = deleteQuery qs tbl au
-    in   withResource pool $ prepExec qry vals
+    in   withConn pool $ prepExec qry vals
 
   save (HdbcAuthManager pool tbl qs) au = do
     let (qry, idQry, vals) = saveQuery qs tbl au
-    withResource pool $ prepExec qry vals
+    withConn pool $ prepExec qry vals
     if isJust $ userId au
       then  return au
       else  do
-        rw   <- withResource pool $ \conn -> withTransaction conn $ \conn' -> do
+        rw <- withConn pool $ \conn -> withTransaction conn $ \conn' -> do
           stmt'  <- prepare conn' idQry
           _      <- execute stmt'  [  toSql $ userLogin au
                                    ,  toSql $ userPassword au]
           fetchRow stmt'
-        nid  <-  case rw of
-                   Nothing     -> fail $  "Failed to fetch the newly inserted row. " ++
-                                          "It might not have been inserted at all."
-                   Just []     -> fail "Something went wrong"
-                   Just (x:_)  -> return (fromSql x :: Text)
+        nid <-  case rw of
+                  Nothing     -> fail $  "Failed to fetch the newly inserted row. " ++
+                                         "It might not have been inserted at all."
+                  Just []     -> fail "Something went wrong"
+                  Just (x:_)  -> return (fromSql x :: Text)
         return $ au { userId = Just (UserId nid) }
 
   lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = authQuery mgr $
@@ -247,7 +233,7 @@ prepExec qry vals conn = withTransaction conn $ \conn' -> do
 
 authQuery :: HdbcAuthManager -> (String, [SqlValue]) -> IO (Maybe AuthUser)
 authQuery (HdbcAuthManager pool tbl _) (qry, vals) = do
-  res <- withResource pool $ \conn -> do
+  res <- withConn pool $ \conn -> do
     stmt  <- prepare conn qry
     _     <- execute stmt vals
     fetchRowMap stmt

@@ -1,5 +1,5 @@
 name:           snaplet-hdbc
-version:        0.6.2.2
+version:        0.6.3
 synopsis:       HDBC snaplet for Snap Framework
 description:    This snaplet consists of two parts: an HDBC abstraction snaplet
                 and an HDBC authentication backend for Snap's authentication
@@ -25,6 +25,7 @@ Library
   exposed-modules:
     Snap.Snaplet.Auth.Backends.Hdbc
     Snap.Snaplet.Hdbc
+    Snap.Snaplet.Hdbc.Types
 
   build-depends:
     base                      >= 4       && < 5,
