@@ -1,6 +1,5 @@
 module Snap.Snaplet.Hdbc.Types where
 
-import            Prelude hiding (catch)
 import            Control.Monad.IO.Control
 import            Control.Monad.State
 import            Database.HDBC (IConnection())

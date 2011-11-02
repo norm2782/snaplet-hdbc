@@ -104,7 +104,8 @@ type Row = Map String SqlValue
 -- > instance HasHdbc (Handler b App) Connection where
 -- >   getPool = with dbLens $ gets hdbcPool
 --
-class (IConnection c, ConnSrc s, MonadControlIO m) => HasHdbc m c s | m -> c s where
+class  (IConnection c, ConnSrc s, MonadControlIO m)
+  =>   HasHdbc m c s | m -> c s where
   getConnSrc :: m (s c)
 
 -- | This is (hopefully) a temporary instance, which will disppear once the
@@ -125,7 +126,10 @@ data HdbcSnaplet c s
 -- desired, use the `hdbcInit'` initialiser instead. When the snaplet is
 -- unloaded, the 'disconnect' function is called to close any remaining
 -- connections.
-hdbcInit :: (ConnSrc s, IConnection c) => s c -> SnapletInit b (HdbcSnaplet c s)
+hdbcInit
+  ::  (ConnSrc s, IConnection c)
+  =>  s c
+  ->  SnapletInit b (HdbcSnaplet c s)
 hdbcInit src = makeSnaplet "hdbc" "HDBC abstraction" Nothing $
   return $ HdbcSnaplet src
 
