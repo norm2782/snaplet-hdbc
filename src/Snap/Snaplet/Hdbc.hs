@@ -77,6 +77,7 @@ import            Control.Exception.Control hiding (Handler)
 import            Control.Monad.IO.Control
 import            Control.Monad.State
 import            Data.Map (Map)
+import            Data.Pool
 import qualified  Database.HDBC as HDBC
 import            Database.HDBC (IConnection(), SqlValue, SqlError, Statement)
 import            Database.HDBC.ColTypes
@@ -119,6 +120,9 @@ data HdbcSnaplet c s
   =   (IConnection c, ConnSrc s)
   =>  HdbcSnaplet
   {   connSrc :: s c }
+
+type HdbcIO    c = HdbcSnaplet c IO
+type HdbcPool  c = HdbcSnaplet c Pool
 
 -- | Initialise the snaplet by providing it with a raw HDBC connection. A
 -- resource pool is created with some default parameters that should be fine
