@@ -11,6 +11,9 @@ module Snap.Snaplet.Hdbc (
   -- Snaplet functions
      HdbcSnaplet(..)
   ,  HasHdbc(..)
+  ,  HdbcIO
+  ,  HdbcPool
+  ,  Row
   ,  hdbcInit
   ,  query
   ,  query'
@@ -73,6 +76,7 @@ module Snap.Snaplet.Hdbc (
 
 import            Prelude hiding (catch)
 
+import            Control.Concurrent.MVar
 import            Control.Exception.Control hiding (Handler)
 import            Control.Monad.IO.Control
 import            Control.Monad.State
@@ -90,36 +94,15 @@ type Row = Map String SqlValue
 
 
 -- | Instantiate this typeclass on 'Handler b YourSnapletState' so this snaplet
--- can find the resource pool. Typically you would instantiate it for Snap's
--- Handler type and use your snaplet's lens to this snaplet to access this
--- snaplet's state, which contains the pool. Suppose your snaplet state type is
--- defined as follows, where 'Connection' is the connection type from the HDBC
--- database adapter of your choosing:
---
--- > data App = App
--- >  { _dbLens :: Snaplet (HdbcSnaplet Connection) }
---
--- Then a typical instance you will want to define in your own snaplet is the
--- following:
---
--- > instance HasHdbc (Handler b App) Connection where
--- >   getPool = with dbLens $ gets hdbcPool
---
+-- can find the connection source.
 class  (IConnection c, ConnSrc s, MonadControlIO m)
   =>   HasHdbc m c s | m -> c s where
-  getConnSrc :: m (s c)
+  getHdbcState :: m (HdbcSnaplet c s)
 
 -- | This is (hopefully) a temporary instance, which will disppear once the
 -- entire snap framework is switched to 'MonadControlIO'.
 instance MonadControlIO (Handler b v) where
   liftControlIO f = liftIO (f return)
-
--- | The snaplet state type containing a resource pool, parameterised by a raw
--- HDBC connection.
-data HdbcSnaplet c s
-  =   (IConnection c, ConnSrc s)
-  =>  HdbcSnaplet
-  {   connSrc :: s c }
 
 type HdbcIO    c = HdbcSnaplet c IO
 type HdbcPool  c = HdbcSnaplet c Pool
@@ -134,23 +117,24 @@ hdbcInit
   ::  (ConnSrc s, IConnection c)
   =>  s c
   ->  SnapletInit b (HdbcSnaplet c s)
-hdbcInit src = makeSnaplet "hdbc" "HDBC abstraction" Nothing $
-  return $ HdbcSnaplet src
+hdbcInit src = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
+  mv <- liftIO newEmptyMVar
+  return $ HdbcSnaplet src mv
 
 
 -- | Get a new connection from the resource pool, apply the provided function
 -- to it and return the result in of the 'IO' compution in monad @m@.
 withHdbc :: HasHdbc m c s => (c -> IO a) -> m a
 withHdbc f = do
-  pl <- getConnSrc
-  withConn pl (liftIO . f)
+  st <- getHdbcState
+  withConn st (liftIO . f)
 
 -- | Get a new connection from the resource pool, apply the provided function
 -- to it and return the result in of the compution in monad 'm'.
 withHdbc' :: HasHdbc m c s => (c -> a) -> m a
 withHdbc' f = do
-  pl <- getConnSrc
-  withConn pl (return . f)
+  st <- getHdbcState
+  withConn st (return . f)
 
 -- | Execute a @SELECT@ query on the database by passing the query as 'String',
 -- together with a list of values to bind to it. A list of 'Row's is returned.
@@ -170,9 +154,15 @@ query sql bind = do
 -- an 'Integer' indicating the numbers of affected rows. This is typically used
 -- for @INSERT@, @UPDATE@ and @DELETE@ queries.
 query' :: HasHdbc m c s => String -> [SqlValue] -> m Integer
-query' sql bind = withTransaction' $ do
-  stmt <- prepare sql
+query' sql bind = withTransaction $ \conn -> do
+  stmt <- HDBC.prepare conn sql
   liftIO $ HDBC.execute stmt bind
+
+-- query' below doesn't work that well, due to withTransaction'
+{- query' :: HasHdbc m c s => String -> [SqlValue] -> m Integer-}
+{- query' sql bind = withTransaction' $ do-}
+  {- stmt <- prepare sql-}
+  {- liftIO $ HDBC.execute stmt bind-}
 
 -- | Run an action inside a transaction. If the action throws an exception, the
 -- transaction will be rolled back, and the exception rethrown.
@@ -188,10 +178,10 @@ withTransaction f = withHdbc (`HDBC.withTransaction` f)
 -- > withTransaction' $ do
 -- >   query "INSERT INTO ..." []
 -- >   query "DELETE FROM ..." []
---
+-- TODO: This isn't really working yet... we need something like query'
 withTransaction' :: HasHdbc m c s => m a -> m a
 withTransaction' action = do
-  r <- onException action doRollback
+  r <- action `onException` doRollback
   commit
   return r
   where doRollback = catch rollback doRollbackHandler

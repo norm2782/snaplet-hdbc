@@ -1,21 +1,39 @@
+{-# LANGUAGE ExistentialQuantification #-}
+
 module Snap.Snaplet.Hdbc.Types where
 
+import            Control.Concurrent.MVar
 import            Control.Monad.IO.Control
 import            Control.Monad.State
 import            Database.HDBC (IConnection())
 import qualified  Database.HDBC as HDBC
 import            Data.Pool
 
+-- | The snaplet state type containing a resource pool, parameterised by a raw
+-- HDBC connection.
+data HdbcSnaplet c s
+  =   (IConnection c, ConnSrc s)
+  =>  HdbcSnaplet
+  {   connSrc  :: s c
+  ,   connVar  :: MVar c }
+
 class ConnSrc s where
-  withConn   :: (MonadControlIO m, IConnection c) => s c -> (c -> m b) -> m b
-  closeConn  :: (MonadControlIO m, IConnection c) => s c -> c -> m ()
+  withConn   :: (MonadControlIO m, IConnection c) => HdbcSnaplet c s -> (c -> m b) -> m b
+  closeConn  :: (MonadControlIO m, IConnection c) => HdbcSnaplet c s -> c -> m ()
 
 instance ConnSrc Pool where
-  withConn       = withResource
+  withConn       = withResource . connSrc
   closeConn _ _  = return ()
 
 instance ConnSrc IO where
-  withConn conn fn = do
-    conn' <- liftIO conn
-    fn conn'
-  closeConn _ = liftIO . HDBC.disconnect
+  withConn st fn = do
+    let cv = connVar st
+    emp   <-  liftIO $ isEmptyMVar cv
+    conn  <-  if emp
+                then do
+                  conn <- liftIO $ connSrc st
+                  liftIO $ putMVar cv conn
+                  return conn
+                else liftIO $ readMVar cv
+    fn conn
+  closeConn _  = liftIO . HDBC.disconnect

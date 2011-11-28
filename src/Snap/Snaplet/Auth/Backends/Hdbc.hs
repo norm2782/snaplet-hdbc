@@ -6,6 +6,7 @@
 -- | Authentication backend using HDBC
 module Snap.Snaplet.Auth.Backends.Hdbc where
 
+import            Control.Concurrent.MVar
 import            Control.Monad.State
 import            Data.Convertible.Base
 import qualified  Data.HashMap.Strict as HM
@@ -37,9 +38,10 @@ initHdbcAuthManager s l conn tbl qs =
   makeSnaplet  "HdbcAuthManager"
                "A snaplet providing user authentication using an HDBC backend"
                Nothing $ liftIO $ do
-  key <- getKey (asSiteKey s)
+  mv   <- newEmptyMVar
+  key  <- getKey (asSiteKey s)
   return AuthManager
-    {  backend = HdbcAuthManager conn tbl qs
+    {  backend = HdbcAuthManager (HdbcSnaplet conn mv) tbl qs
     ,  session = l
     ,  activeUser = Nothing
     ,  minPasswdLen = asMinPasswdLen s
@@ -53,9 +55,9 @@ initHdbcAuthManager s l conn tbl qs =
 data HdbcAuthManager
   =   forall c s. (IConnection c, ConnSrc s)
   =>  HdbcAuthManager
-  {   authDBPool :: s c
-  ,   table  :: AuthTable
-  ,   qries  :: Queries }
+  {   connSt  :: HdbcSnaplet c s
+  ,   table   :: AuthTable
+  ,   qries   :: Queries }
 
 -- | Datatype containing the names of the columns for the authentication table.
 data AuthTable
@@ -196,17 +198,17 @@ instance Convertible UserId SqlValue where
   safeConvert (UserId uid) = Right $ toSql uid
 
 instance IAuthBackend HdbcAuthManager where
-  destroy (HdbcAuthManager pool tbl qs) au =
+  destroy (HdbcAuthManager st tbl qs) au =
     let  (qry, vals) = deleteQuery qs tbl au
-    in   withConn pool $ prepExec qry vals
+    in   withConn st $ prepExec qry vals
 
-  save (HdbcAuthManager pool tbl qs) au = do
+  save (HdbcAuthManager st tbl qs) au = do
     let (qry, idQry, vals) = saveQuery qs tbl au
-    withConn pool $ prepExec qry vals
+    withConn st $ prepExec qry vals
     if isJust $ userId au
       then  return au
       else  do
-        rw <- withConn pool $ \conn -> withTransaction conn $ \conn' -> do
+        rw <- withConn st $ \conn -> withTransaction conn $ \conn' -> do
           stmt'  <- prepare conn' idQry
           _      <- execute stmt'  [  toSql $ userLogin au
                                    ,  toSql $ userPassword au]
@@ -232,8 +234,8 @@ prepExec qry vals conn = withTransaction conn $ \conn' -> do
   return ()
 
 authQuery :: HdbcAuthManager -> (String, [SqlValue]) -> IO (Maybe AuthUser)
-authQuery (HdbcAuthManager pool tbl _) (qry, vals) = do
-  res <- withConn pool $ \conn -> do
+authQuery (HdbcAuthManager st tbl _) (qry, vals) = do
+  res <- withConn st $ \conn -> do
     stmt  <- prepare conn qry
     _     <- execute stmt vals
     fetchRowMap stmt
