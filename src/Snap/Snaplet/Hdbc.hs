@@ -17,6 +17,7 @@ module Snap.Snaplet.Hdbc (
   ,  hdbcInit
   ,  query
   ,  query'
+  ,  Row
 
   -- Snapletified HDBC functions
   ,  clone
