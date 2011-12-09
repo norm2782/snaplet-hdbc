@@ -1,5 +1,5 @@
 name:           snaplet-hdbc
-version:        0.6.4
+version:        0.7
 synopsis:       HDBC snaplet for Snap Framework
 description:    This snaplet consists of two parts: an HDBC abstraction snaplet
                 and an HDBC authentication backend for Snap's authentication
@@ -39,7 +39,7 @@ Library
     mtl                       >  2.0     && < 2.1,
     monad-control             >= 0.2     && < 0.3,
     resource-pool             >= 0.2     && < 0.3,
-    snap                      >= 0.6     && < 0.7,
+    snap                      >= 0.6     && < 0.8,
     text                      >= 0.11    && < 0.12,
     time                      >= 1.1     && < 1.5,
     unordered-containers      >= 0.1.4   && < 0.2

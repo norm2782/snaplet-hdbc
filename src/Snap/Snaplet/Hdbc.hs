@@ -153,6 +153,7 @@ query sql bind = do
 -- | Similar to 'query', but instead of returning a list of 'Row's, it returns
 -- an 'Integer' indicating the numbers of affected rows. This is typically used
 -- for @INSERT@, @UPDATE@ and @DELETE@ queries.
+-- TODO: Revert to the implementation below once withTransaction' works as expected.
 query' :: HasHdbc m c s => String -> [SqlValue] -> m Integer
 query' sql bind = withTransaction $ \conn -> do
   stmt <- HDBC.prepare conn sql
@@ -184,9 +185,9 @@ withTransaction' action = do
   r <- action `onException` doRollback
   commit
   return r
-  where doRollback = catch rollback doRollbackHandler
-        doRollbackHandler :: MonadControlIO m => SomeException -> m ()
-        doRollbackHandler _ = return ()
+  where  doRollback = rollback `catch` doRollbackHandler
+         doRollbackHandler :: MonadControlIO m => SomeException -> m ()
+         doRollbackHandler _ = return ()
 
 -- | The functions provided below are wrappers around the original HDBC
 -- functions. Please refer to the HDBC documentation to see what they do and
