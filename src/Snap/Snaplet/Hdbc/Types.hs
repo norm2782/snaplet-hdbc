@@ -38,7 +38,7 @@ class ConnSrc s where
 #endif
 
 instance ConnSrc Pool where
-  withConn       = undefined --withResource . connSrc
+  withConn       = withResource . connSrc
   closeConn _ _  = return ()
 
 instance ConnSrc IO where
