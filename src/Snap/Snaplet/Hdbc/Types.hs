@@ -1,23 +1,14 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Snap.Snaplet.Hdbc.Types where
 
 import            Control.Concurrent.MVar
+import            Control.Monad.CatchIO
 import            Control.Monad.State
 import            Database.HDBC (IConnection())
 import qualified  Database.HDBC as HDBC
 import            Data.Pool
-
-#if MIN_VERSION_monad_control(0,3,0)
-import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Monad.Base (liftBase)
-#else
-import Control.Monad.IO.Control (MonadControlIO)
-#define control controlIO
-#define liftBase liftIO
-#endif
 
 -- | The snaplet state type containing a resource pool, parameterised by a raw
 -- HDBC connection.
@@ -27,15 +18,9 @@ data HdbcSnaplet c s
   {   connSrc  :: s c
   ,   connVar  :: MVar c }
 
-#if MIN_VERSION_monad_control(0,3,0)
 class ConnSrc s where
-  withConn   :: (MonadBaseControl IO m, IConnection c) => HdbcSnaplet c s -> (c -> m b) -> m b
-  closeConn  :: (MonadBaseControl IO m, IConnection c) => HdbcSnaplet c s -> c -> m ()
-#else
-class ConnSrc s where
-  withConn   :: (MonadControlIO m, IConnection c) => HdbcSnaplet c s -> (c -> m b) -> m b
-  closeConn  :: (MonadControlIO m, IConnection c) => HdbcSnaplet c s -> c -> m ()
-#endif
+  withConn   :: (MonadCatchIO m, IConnection c) => HdbcSnaplet c s -> (c -> m b) -> m b
+  closeConn  :: (MonadCatchIO m, IConnection c) => HdbcSnaplet c s -> c -> m ()
 
 instance ConnSrc Pool where
   withConn       = withResource . connSrc
@@ -44,12 +29,12 @@ instance ConnSrc Pool where
 instance ConnSrc IO where
   withConn st fn = do
     let cv = connVar st
-    emp   <-  liftBase $ isEmptyMVar cv
+    emp   <-  liftIO $ isEmptyMVar cv
     conn  <-  if emp
                 then do
-                  conn <- liftBase $ connSrc st
-                  liftBase $ putMVar cv conn
+                  conn <- liftIO $ connSrc st
+                  liftIO $ putMVar cv conn
                   return conn
-                else liftBase $ readMVar cv
+                else liftIO $ readMVar cv
     fn conn
-  closeConn _  = liftBase . HDBC.disconnect
+  closeConn _  = liftIO . HDBC.disconnect

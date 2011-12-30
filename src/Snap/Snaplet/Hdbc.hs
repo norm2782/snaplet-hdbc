@@ -1,10 +1,10 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | This module provides a very thin wrapper around HDBC. It wraps some of the
 -- HDBC functions in more convenient functions and re-exports the rest of the
@@ -79,6 +79,9 @@ module Snap.Snaplet.Hdbc (
 import            Prelude hiding (catch)
 
 import            Control.Concurrent.MVar
+import            Control.Exception (SomeException)
+import            Control.Monad.CatchIO
+import            Control.Monad.IO.Class
 import            Data.Map (Map)
 import            Data.Pool
 import qualified  Database.HDBC as HDBC
@@ -86,18 +89,6 @@ import            Database.HDBC (IConnection(), SqlValue, SqlError, Statement)
 import            Database.HDBC.ColTypes
 import            Snap.Snaplet
 import            Snap.Snaplet.Hdbc.Types
-
-#if MIN_VERSION_monad_control(0,3,0)
-import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Monad.Base
-import Control.Exception.Lifted
-#else
-import Control.Monad.IO.Control (MonadControlIO(..))
-import Control.Monad.IO.Class (liftIO)
-import Control.Exception.Control hiding (Handler)
-#define control controlIO
-#define liftBase liftIO
-#endif
 
 -- | A map with the column name as key and the value from the database as value
 type Row = Map String SqlValue
@@ -107,23 +98,10 @@ type Row = Map String SqlValue
 -- can find the connection source.
 class  (  IConnection c
        ,  ConnSrc s
-#if MIN_VERSION_monad_control(0,3,0)
-       ,  MonadBaseControl IO m
-#else
-       ,  MonadControlIO m
-#endif
+       ,  MonadCatchIO m
        )
   =>   HasHdbc m c s | m -> c s where
   getHdbcState :: m (HdbcSnaplet c s)
-
--- | This is (hopefully) a temporary instance, which will disppear once the
--- entire snap framework is switched to monad-control.
-#if MIN_VERSION_monad_control(0,3,0)
-
-#else
-instance MonadControlIO (Handler b v) where
-  liftControlIO f = liftBase (f return)
-#endif
 
 type HdbcIO    c = HdbcSnaplet c IO
 type HdbcPool  c = HdbcSnaplet c Pool
@@ -137,14 +115,11 @@ type HdbcPool  c = HdbcSnaplet c Pool
 hdbcInit
   ::  (  ConnSrc s
       ,  IConnection c
-#if MIN_VERSION_monad_control(0,3,0)
-      ,  MonadBase IO (Initializer b (HdbcSnaplet c s))
-#endif
       )
   =>  s c
   ->  SnapletInit b (HdbcSnaplet c s)
 hdbcInit src = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
-  mv <- liftBase newEmptyMVar
+  mv <- liftIO newEmptyMVar
   return $ HdbcSnaplet src mv
 
 
@@ -153,7 +128,7 @@ hdbcInit src = makeSnaplet "hdbc" "HDBC abstraction" Nothing $ do
 withHdbc :: HasHdbc m c s => (c -> IO a) -> m a
 withHdbc f = do
   st <- getHdbcState
-  withConn st (liftBase . f)
+  withConn st (liftIO . f)
 
 -- | Get a new connection from the resource pool, apply the provided function
 -- to it and return the result in of the compution in monad 'm'.
@@ -173,8 +148,8 @@ query
                  --   row. Can be the empty list.
 query sql bind = do
   stmt <- prepare sql
-  liftBase $ HDBC.execute stmt bind
-  liftBase $ HDBC.fetchAllRowsMap stmt
+  liftIO $ HDBC.execute stmt bind
+  liftIO $ HDBC.fetchAllRowsMap stmt
 
 -- | Similar to 'query', but instead of returning a list of 'Row's, it returns
 -- an 'Integer' indicating the numbers of affected rows. This is typically used
@@ -183,13 +158,13 @@ query sql bind = do
 query' :: HasHdbc m c s => String -> [SqlValue] -> m Integer
 query' sql bind = withTransaction $ \conn -> do
   stmt <- HDBC.prepare conn sql
-  liftBase $ HDBC.execute stmt bind
+  liftIO $ HDBC.execute stmt bind
 
 -- query' below doesn't work that well, due to withTransaction'
 {- query' :: HasHdbc m c s => String -> [SqlValue] -> m Integer-}
 {- query' sql bind = withTransaction' $ do-}
   {- stmt <- prepare sql-}
-  {- liftBase $ HDBC.execute stmt bind-}
+  {- liftIO $ HDBC.execute stmt bind-}
 
 -- | Run an action inside a transaction. If the action throws an exception, the
 -- transaction will be rolled back, and the exception rethrown.
@@ -212,11 +187,7 @@ withTransaction' action = do
   commit
   return r
   where  doRollback = rollback `catch` doRollbackHandler
-#if MIN_VERSION_monad_control(0,3,0)
-         doRollbackHandler :: MonadBaseControl IO m => SomeException -> m ()
-#else
-         doRollbackHandler :: MonadControlIO m => SomeException -> m ()
-#endif
+         doRollbackHandler :: MonadCatchIO m => SomeException -> m ()
          doRollbackHandler _ = return ()
 
 -- | The functions provided below are wrappers around the original HDBC
