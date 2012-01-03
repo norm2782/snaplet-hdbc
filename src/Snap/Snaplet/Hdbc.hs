@@ -149,7 +149,7 @@ query
 query sql bind = do
   stmt <- prepare sql
   liftIO $ HDBC.execute stmt bind
-  liftIO $ HDBC.fetchAllRowsMap stmt
+  liftIO $ HDBC.fetchAllRowsMap' stmt
 
 -- | Similar to 'query', but instead of returning a list of 'Row's, it returns
 -- an 'Integer' indicating the numbers of affected rows. This is typically used
