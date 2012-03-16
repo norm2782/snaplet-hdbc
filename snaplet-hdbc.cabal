@@ -39,11 +39,11 @@ Library
     MonadCatchIO-transformers  >= 0.2.1   && < 0.3,
     mtl                        >  2.0     && < 2.1,
     resource-pool-catchio      >= 0.2     && < 0.3,
-    snap                       >= 0.6     && < 0.8,
+    snap                       >= 0.6     && < 0.9,
     text                       >= 0.11    && < 0.12,
     time                       >= 1.1     && < 1.5,
     transformers               >= 0.2     && < 0.3,
-    unordered-containers       >= 0.1.4   && < 0.2
+    unordered-containers       >= 0.1.4   && < 0.3
 
   ghc-options: -Wall -fwarn-tabs -funbox-strict-fields
                -fno-warn-orphans -fno-warn-unused-do-bind
