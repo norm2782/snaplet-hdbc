@@ -21,6 +21,7 @@ import            Snap.Snaplet
 import            Snap.Snaplet.Auth
 import            Snap.Snaplet.Hdbc.Types
 import            Snap.Snaplet.Session
+import            Snap.Snaplet.Session.Common
 import            Web.ClientSession
 
 -- | Initialises this HDBC snaplet. It automatically configures a resource
@@ -40,6 +41,7 @@ initHdbcAuthManager s l conn tbl qs =
                Nothing $ liftIO $ do
   mv   <- newEmptyMVar
   key  <- getKey (asSiteKey s)
+  rng  <- mkRNG
   return AuthManager
     {  backend = HdbcAuthManager (HdbcSnaplet conn mv) tbl qs
     ,  session = l
@@ -48,7 +50,8 @@ initHdbcAuthManager s l conn tbl qs =
     ,  rememberCookieName = asRememberCookieName s
     ,  rememberPeriod = asRememberPeriod s
     ,  siteKey = key
-    ,  lockout = asLockout s }
+    ,  lockout = asLockout s
+    ,  randomNumberGenerator = rng }
 
 -- | Authmanager state containing the resource pool and the table/query
 -- configuration.
