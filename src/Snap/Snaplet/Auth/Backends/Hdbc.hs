@@ -10,7 +10,6 @@ import            Control.Concurrent.MVar
 import            Control.Monad.State
 import            Data.Convertible.Base
 import qualified  Data.HashMap.Strict as HM
-import            Data.Lens.Lazy
 import            Data.List
 import            Data.Map (Map)
 import qualified  Data.Map as DM
@@ -21,7 +20,6 @@ import            Snap.Snaplet
 import            Snap.Snaplet.Auth
 import            Snap.Snaplet.Hdbc.Types
 import            Snap.Snaplet.Session
-import            Snap.Snaplet.Session.Common
 import            Web.ClientSession
 
 -- | Initialises this HDBC snaplet. It automatically configures a resource
@@ -30,7 +28,7 @@ import            Web.ClientSession
 initHdbcAuthManager
   :: (ConnSrc s, IConnection c)
   => AuthSettings  -- ^ Auth settings
-  -> Lens b (Snaplet SessionManager)  -- ^ Lens to the session manager
+  -> SnapletLens b SessionManager  -- ^ Lens to the session manager
   -> s c           -- ^ Raw HDBC connection
   -> AuthTable     -- ^ Authentication table configuration
   -> Queries       -- ^ Queries to be used for authentication
@@ -68,6 +66,7 @@ data AuthTable
   {  tblName :: String
   ,  colId :: String
   ,  colLogin :: String
+  ,  colEmail :: String
   ,  colPassword :: String
   ,  colActivatedAt :: String
   ,  colSuspendedAt :: String
@@ -81,6 +80,8 @@ data AuthTable
   ,  colLastLoginIp :: String
   ,  colCreatedAt :: String
   ,  colUpdatedAt :: String
+  ,  colResetToken :: String
+  ,  colResetRequestedAt :: String
   ,  colRoles :: String
   ,  colMeta :: String }
 
@@ -90,7 +91,8 @@ defAuthTable
   =  AuthTable
   {  tblName = "users"
   ,  colId = "uid"
-  ,  colLogin = "email"
+  ,  colLogin = "login"
+  ,  colEmail = "email"
   ,  colPassword = "password"
   ,  colActivatedAt = "activated_at"
   ,  colSuspendedAt = "suspended_at"
@@ -104,6 +106,8 @@ defAuthTable
   ,  colLastLoginIp = "last_login_ip"
   ,  colCreatedAt = "created_at"
   ,  colUpdatedAt = "updated_at"
+  ,  colResetToken = "reset_token"
+  ,  colResetRequestedAt = "reset_requested_at"
   ,  colRoles = "roles"
   ,  colMeta = "meta" }
 
@@ -112,6 +116,7 @@ defAuthTable
 colLst :: [AuthTable -> String]
 colLst =
   [  colLogin
+  ,  colEmail
   ,  colPassword
   ,  colActivatedAt
   ,  colSuspendedAt
@@ -125,6 +130,8 @@ colLst =
   ,  colLastLoginIp
   ,  colCreatedAt
   ,  colUpdatedAt
+  ,  colResetToken
+  ,  colResetRequestedAt
   ,  colRoles
   ,  colMeta ]
 
@@ -168,6 +175,7 @@ defSaveQuery tbl au = (mkQry uid, mkIdQry, mkVals uid)
          mkVals Nothing   = mkVals'
          mkVals (Just i)  = mkVals' ++ [toSql i]
          mkVals' =  [  toSql $ userLogin au
+                    ,  toSql $ userEmail au
                     ,  toSql $ userPassword au
                     ,  toSql $ userActivatedAt au
                     ,  toSql $ userSuspendedAt au
@@ -181,6 +189,8 @@ defSaveQuery tbl au = (mkQry uid, mkIdQry, mkVals uid)
                     ,  toSql $ userLastLoginIp au
                     ,  toSql $ userCreatedAt au
                     ,  toSql $ userUpdatedAt au
+                    ,  toSql $ userResetToken au
+                    ,  toSql $ userResetRequestedAt au
                     ,  SqlNull -- userRoles au TODO: Implement when ACL system is live
                     ,  SqlNull -- userMeta au TODO: What should we store here?
                     ]
@@ -209,7 +219,7 @@ instance IAuthBackend HdbcAuthManager where
     let (qry, idQry, vals) = saveQuery qs tbl au
     withConn st $ prepExec qry vals
     if isJust $ userId au
-      then  return au
+      then  return $ Right au
       else  do
         rw <- withConn st $ \conn -> withTransaction conn $ \conn' -> do
           stmt'  <- prepare conn' idQry
@@ -221,7 +231,7 @@ instance IAuthBackend HdbcAuthManager where
                                          "It might not have been inserted at all."
                   Just []     -> fail "Something went wrong"
                   Just (x:_)  -> return (fromSql x :: Text)
-        return $ au { userId = Just (UserId nid) }
+        return $ Right au { userId = Just (UserId nid) }
 
   lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = authQuery mgr $
     selectQuery qs tbl ByUserId [toSql uid]
@@ -256,6 +266,7 @@ mkUser tbl mp =
   in   AuthUser
        {  userId = rdSql UserId colId
        ,  userLogin = fromSql $ colLU colLogin
+       ,  userEmail = rdSql id colEmail
        ,  userPassword = rdSql Encrypted colPassword
        ,  userActivatedAt = rdSql id colActivatedAt
        ,  userSuspendedAt = rdSql id colSuspendedAt
@@ -269,5 +280,7 @@ mkUser tbl mp =
        ,  userLastLoginIp = rdSql id colLastLoginIp
        ,  userCreatedAt = rdSql id colCreatedAt
        ,  userUpdatedAt = rdSql id colUpdatedAt
+       ,  userResetToken = rdSql id colResetToken
+       ,  userResetRequestedAt = rdSql id colResetRequestedAt
        ,  userRoles = [] -- :: [Role] TODO
        ,  userMeta = HM.empty } -- :: HashMap Text Value TODO
