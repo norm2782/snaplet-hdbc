@@ -10,7 +10,6 @@ import            Control.Concurrent.MVar
 import            Control.Monad.State
 import            Data.Convertible.Base
 import qualified  Data.HashMap.Strict as HM
-import            Data.Lens.Lazy
 import            Data.List
 import            Data.Map (Map)
 import qualified  Data.Map as DM
@@ -21,7 +20,6 @@ import            Snap.Snaplet
 import            Snap.Snaplet.Auth
 import            Snap.Snaplet.Hdbc.Types
 import            Snap.Snaplet.Session
-import            Snap.Snaplet.Session.Common
 import            Web.ClientSession
 
 -- | Initialises this HDBC snaplet. It automatically configures a resource
@@ -30,7 +28,7 @@ import            Web.ClientSession
 initHdbcAuthManager
   :: (ConnSrc s, IConnection c)
   => AuthSettings  -- ^ Auth settings
-  -> Lens b (Snaplet SessionManager)  -- ^ Lens to the session manager
+  -> SnapletLens b SessionManager  -- ^ Lens to the session manager
   -> s c           -- ^ Raw HDBC connection
   -> AuthTable     -- ^ Authentication table configuration
   -> Queries       -- ^ Queries to be used for authentication
@@ -69,9 +67,12 @@ data AuthTable
   ,  colId :: String
   ,  colLogin :: String
   ,  colPassword :: String
+  ,  colEmail :: String
   ,  colActivatedAt :: String
   ,  colSuspendedAt :: String
   ,  colRememberToken :: String
+  ,  colResetToken :: String
+  ,  colResetRequestedAt :: String
   ,  colLoginCount :: String
   ,  colFailedLoginCount :: String
   ,  colLockedOutUntil :: String
@@ -90,11 +91,14 @@ defAuthTable
   =  AuthTable
   {  tblName = "users"
   ,  colId = "uid"
-  ,  colLogin = "email"
+  ,  colLogin = "login"
   ,  colPassword = "password"
+  ,  colEmail = "email"
   ,  colActivatedAt = "activated_at"
   ,  colSuspendedAt = "suspended_at"
   ,  colRememberToken = "remember_token"
+  ,  colResetToken = "reset_token"
+  ,  colResetRequestedAt = "reset_requested_at"
   ,  colLoginCount = "login_count"
   ,  colFailedLoginCount = "failed_login_count"
   ,  colLockedOutUntil = "locked_out_until"
@@ -113,9 +117,12 @@ colLst :: [AuthTable -> String]
 colLst =
   [  colLogin
   ,  colPassword
+  ,  colEmail
   ,  colActivatedAt
   ,  colSuspendedAt
   ,  colRememberToken
+  ,  colResetToken
+  ,  colResetRequestedAt
   ,  colLoginCount
   ,  colFailedLoginCount
   ,  colLockedOutUntil
@@ -169,9 +176,12 @@ defSaveQuery tbl au = (mkQry uid, mkIdQry, mkVals uid)
          mkVals (Just i)  = mkVals' ++ [toSql i]
          mkVals' =  [  toSql $ userLogin au
                     ,  toSql $ userPassword au
+                    ,  toSql $ userEmail au
                     ,  toSql $ userActivatedAt au
                     ,  toSql $ userSuspendedAt au
                     ,  toSql $ userRememberToken au
+                    ,  toSql $ userResetToken au
+                    ,  toSql $ userResetRequestedAt au
                     ,  toSql $ userLoginCount au
                     ,  toSql $ userFailedLoginCount au
                     ,  toSql $ userLockedOutUntil au
@@ -209,7 +219,7 @@ instance IAuthBackend HdbcAuthManager where
     let (qry, idQry, vals) = saveQuery qs tbl au
     withConn st $ prepExec qry vals
     if isJust $ userId au
-      then  return au
+      then  return $! Right au
       else  do
         rw <- withConn st $ \conn -> withTransaction conn $ \conn' -> do
           stmt'  <- prepare conn' idQry
@@ -221,7 +231,7 @@ instance IAuthBackend HdbcAuthManager where
                                          "It might not have been inserted at all."
                   Just []     -> fail "Something went wrong"
                   Just (x:_)  -> return (fromSql x :: Text)
-        return $ au { userId = Just (UserId nid) }
+        return $! Right $ au { userId = Just (UserId nid) }
 
   lookupByUserId mgr@(HdbcAuthManager _ tbl qs) uid = authQuery mgr $
     selectQuery qs tbl ByUserId [toSql uid]
@@ -256,9 +266,12 @@ mkUser tbl mp =
   in   AuthUser
        {  userId = rdSql UserId colId
        ,  userLogin = fromSql $ colLU colLogin
+       ,  userEmail = rdSql id colEmail
        ,  userPassword = rdSql Encrypted colPassword
        ,  userActivatedAt = rdSql id colActivatedAt
        ,  userSuspendedAt = rdSql id colSuspendedAt
+       ,  userResetToken = rdSql id colResetToken
+       ,  userResetRequestedAt = rdSql id colResetRequestedAt
        ,  userRememberToken = rdSql id colRememberToken
        ,  userLoginCount = rdInt colLoginCount
        ,  userFailedLoginCount = rdInt colFailedLoginCount
